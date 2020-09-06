@@ -1,0 +1,8 @@
+---------------------------------------------------------------------------------------------------
+Version: 1.0.1
+Date: ????
+  Features:
+    - Automatically place a pipe when two undergrounds are placed at a corner or one space apart
+  Other:
+    - First version!
+
