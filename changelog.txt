@@ -1,6 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.0.2
+Date: 2020-09-07
+  Features:
+    - Prevent mixing fluids
+---------------------------------------------------------------------------------------------------
 Version: 1.0.1
-Date: ????
+Date: 2020-09-06
   Features:
     - Automatically place a pipe when two undergrounds are placed at a corner or one space apart
   Other:
