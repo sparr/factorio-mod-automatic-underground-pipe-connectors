@@ -40,6 +40,7 @@ function on_built_entity(event)
     local underground_position = underground_entity.position
     local neighbor_info = direction_to_neighbors[underground_direction]
     local pipe_lookup = global.pipe_lookup[underground_name]
+    if not pipe_lookup then return end -- don't know what pipe goes with this!?
     local pipe_position = direction_to_delta[underground_direction]
 
     local pipe_entity_definition = {
@@ -59,6 +60,9 @@ function on_built_entity(event)
 
     -- bail out if we can't place a pipe, could be blocked or a fluid mixing violation
     if not underground_entity.surface.can_place_entity(pipe_entity_definition) then return end
+
+    -- bail out if there's something here our pipe would fast replace
+    if underground_entity.surface.can_fast_replace(pipe_entity_definition) then return end
 
     -- look at the three possible locations for another underground to connect to
     for _, neighbor_candidate in pairs(neighbor_info) do
@@ -81,6 +85,7 @@ end
 
 global.pipe_lookup = global.pipe_lookup or {}
 
+--TODO recursively search through ingredient recipes to find pipe->X->Y->Z->underground like SchallPipeScaling
 -- Find recipes that produce underground pipes and try to figure out which pipe they belong with
 function rebuild_index()
     local underground_recipe_prototypes = game.get_filtered_recipe_prototypes({{filter="has-product-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe-to-ground"}}}}},{filter="has-ingredient-item",mode="and",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe"}}}}}})
