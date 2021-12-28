@@ -1,7 +1,9 @@
 ---------------------------------------------------------------------------------------------------
 Version: 1.0.3
-Date: ????
-  Changes:
+Date: 2020-10-1
+  Bugfixes:
+    - Avoid errors on unrecognized pipes
+    - Avoid replacing fast-replace-able entities like other pipes
 ---------------------------------------------------------------------------------------------------
 Version: 1.0.2
 Date: 2020-09-07
