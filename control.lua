@@ -1,6 +1,8 @@
 -- underground pipe neighbor lookup table
 -- keys are underground pipe directions
 -- values describe the possible relative locations and directions of another to connect to
+
+---@type table<integer, { pos: MapPosition, dir: defines.direction }[]>
 local direction_to_neighbors = {
     [defines.direction.north] = { -- for an underground pipe pointing north
         {pos={-1,-1}, dir=defines.direction.east }, -- one space ahead and left
@@ -24,7 +26,8 @@ local direction_to_neighbors = {
     },
 }
 
--- x and y offsets to move one step in the given direction
+--- x and y offsets to move one step in the given direction
+---@type table<defines.direction, MapPosition>
 local direction_to_delta = {
     [defines.direction.north] = { 0, -1},
     [defines.direction.east ] = { 1,  0},
@@ -32,19 +35,26 @@ local direction_to_delta = {
     [defines.direction.west ] = {-1,  0},
 }
 
-function on_built_entity(event)
+---@param event EventData.on_built_entity
+local function on_built_entity(event)
     -- locals for efficient repeat access
     local underground_entity = event.created_entity
     local underground_name = underground_entity.name
+    local pipe_lookup = global.pipe_lookup[underground_name]
+    if not pipe_lookup then return end -- we don't know what pipe goes with this underground pipe
+
+    local underground_surface = underground_entity.surface
     local underground_direction = underground_entity.direction
     local underground_position = underground_entity.position
     local neighbor_info = direction_to_neighbors[underground_direction]
-    local pipe_lookup = global.pipe_lookup[underground_name]
-    if not pipe_lookup then return end -- don't know what pipe goes with this!?
     local pipe_position = direction_to_delta[underground_direction]
+    local pipe_item_name = pipe_lookup[1]
+    local pipe_entity_name = pipe_lookup[2]
 
+    ---@class EntityEtc: LuaEntity, LuaSurface.create_entity_param, LuaSurface.can_place_entity_param, LuaSurface.can_fast_replace_param
+    ---@type EntityEtc
     local pipe_entity_definition = {
-        name = pipe_lookup[2],
+        name = pipe_entity_name,
         position = {underground_position.x + pipe_position[1], underground_position.y + pipe_position[2]},
 
         -- properties just for create_entity
@@ -72,9 +82,9 @@ function on_built_entity(event)
         )
         if neighbor_entity and neighbor_entity.direction == neighbor_candidate.dir then
             -- found one in the right place and direction
-            if game.players[event.player_index].get_main_inventory().find_item_stack(pipe_lookup[1]) then
+            if game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name) then
                 -- we have a pipe in inventory, so spend it
-                game.players[event.player_index].get_main_inventory().remove({name=pipe_lookup[1]})
+                game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
                 -- to place the pipe entity
                 underground_entity.surface.create_entity(pipe_entity_definition)
             end
@@ -83,11 +93,12 @@ function on_built_entity(event)
     end
 end
 
+---@type table<string, string[]>
 global.pipe_lookup = global.pipe_lookup or {}
 
---TODO recursively search through ingredient recipes to find pipe->X->Y->Z->underground like SchallPipeScaling
--- Find recipes that produce underground pipes and try to figure out which pipe they belong with
-function rebuild_index()
+--- Find recipes that produce underground pipes, try to figure out which pipe they belong with, save results to global lookup table
+local function rebuild_index()
+    --TODO recursively search through ingredient recipes to find pipe->X->Y->Z->underground like SchallPipeScaling
     local underground_recipe_prototypes = game.get_filtered_recipe_prototypes({{filter="has-product-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe-to-ground"}}}}},{filter="has-ingredient-item",mode="and",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe"}}}}}})
     for _, urp_prototype in pairs(underground_recipe_prototypes) do
         local underground_entity_name, pipe_item_name, pipe_entity_name
