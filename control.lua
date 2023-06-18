@@ -39,7 +39,14 @@ local direction_to_delta = {
 local function on_built_entity(event)
     -- locals for efficient repeat access
     local underground_entity = event.created_entity
-    local underground_name = underground_entity.name
+    local underground_name
+    local ghost = false
+    if underground_entity.type == "entity-ghost" then
+        ghost = true
+        underground_name = underground_entity.ghost_name
+    else
+        underground_name = underground_entity.name
+    end
     local pipe_lookup = global.pipe_lookup[underground_name]
     if not pipe_lookup then return end -- we don't know what pipe goes with this underground pipe
 
@@ -54,7 +61,7 @@ local function on_built_entity(event)
     ---@class EntityEtc: LuaEntity, LuaSurface.create_entity_param, LuaSurface.can_place_entity_param, LuaSurface.can_fast_replace_param
     ---@type EntityEtc
     local pipe_entity_definition = {
-        name = pipe_entity_name,
+        name = ghost and "entity-ghost" or pipe_entity_name,
         position = {underground_position.x + pipe_position[1], underground_position.y + pipe_position[2]},
 
         -- properties just for create_entity
@@ -65,9 +72,11 @@ local function on_built_entity(event)
         spawn_decorations = true,
 
         -- properties just for can_place_entity
-        build_check_type = defines.build_check_type.manual,
+        build_check_type = ghost and defines.build_check_type.script_ghost or defines.build_check_type.manual,
     }
-
+    if ghost then
+        pipe_entity_definition.inner_name = pipe_entity_name
+    end
 
     if not underground_surface.can_place_entity(pipe_entity_definition) then
         -- bail out because we can't place a pipe, could be blocked or a fluid mixing violation
@@ -86,17 +95,27 @@ local function on_built_entity(event)
 
     -- look at the three possible locations for another underground to connect to
     for _, neighbor_candidate in pairs(neighbor_info) do
-        local neighbor_entity = underground_entity.surface.find_entity(
+        local neighbor_entity = underground_surface.find_entity(
             underground_name,
             {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
         )
-        if neighbor_entity and neighbor_entity.direction == neighbor_candidate.dir then
+        local neighbor_ghost
+        if ghost then
+            neighbor_ghost = underground_surface.find_entity(
+                "entity-ghost",
+                {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
+            )
+        end
+        if neighbor_ghost and neighbor_ghost.ghost_name == underground_name and neighbor_ghost.direction == neighbor_candidate.dir or
+           neighbor_entity and neighbor_entity.name == underground_name and neighbor_entity.direction == neighbor_candidate.dir then
             -- found one in the right place and direction
-            if game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name) then
+            if ghost or game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name) then
                 -- we have a pipe in inventory, so spend it
-                game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
+                if not ghost then
+                    game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
+                end
                 -- to place the pipe entity
-                underground_entity.surface.create_entity(pipe_entity_definition)
+                underground_surface.create_entity(pipe_entity_definition)
             end
             break
         end
@@ -132,4 +151,4 @@ end
 script.on_init(rebuild_index)
 script.on_configuration_changed(rebuild_index)
 
-script.on_event(defines.events.on_built_entity, on_built_entity, {{filter="type",type="pipe-to-ground"}})
+script.on_event(defines.events.on_built_entity, on_built_entity, {{filter="type",type="pipe-to-ground"},{filter="ghost_type",type="pipe-to-ground"}})
