@@ -68,11 +68,21 @@ local function on_built_entity(event)
         build_check_type = defines.build_check_type.manual,
     }
 
-    -- bail out if we can't place a pipe, could be blocked or a fluid mixing violation
-    if not underground_entity.surface.can_place_entity(pipe_entity_definition) then return end
 
-    -- bail out if there's something here our pipe would fast replace
-    if underground_entity.surface.can_fast_replace(pipe_entity_definition) then return end
+    if not underground_surface.can_place_entity(pipe_entity_definition) then
+        -- bail out because we can't place a pipe, could be blocked or a fluid mixing violation
+        return
+    end
+
+    if underground_surface.can_fast_replace(pipe_entity_definition) then
+        local ghost = underground_surface.find_entity("entity-ghost", pipe_entity_definition.position)
+        if ghost and ghost.ghost_name == pipe_entity_name then
+            -- don't bail out, matching ghost is ok to replace
+        else
+            -- bail out because there's something here our pipe would fast replace
+            return
+        end
+    end
 
     -- look at the three possible locations for another underground to connect to
     for _, neighbor_candidate in pairs(neighbor_info) do
