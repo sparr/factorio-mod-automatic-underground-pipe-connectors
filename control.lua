@@ -2,7 +2,7 @@
 -- keys are underground pipe directions
 -- values describe the possible relative locations and directions of another to connect to
 
----@type table<integer, { pos: MapPosition, dir: defines.direction }[]>
+---@type table<integer, { pos: Vector, dir: defines.direction }[]>
 local direction_to_neighbors = {
     [defines.direction.north] = { -- for an underground pipe pointing north
         {pos={-1,-1}, dir=defines.direction.east }, -- one space ahead and left
@@ -27,7 +27,7 @@ local direction_to_neighbors = {
 }
 
 --- x and y offsets to move one step in the given direction
----@type table<defines.direction, MapPosition>
+---@type table<defines.direction, Vector>
 local direction_to_delta = {
     [defines.direction.north] = { 0, -1},
     [defines.direction.east ] = { 1,  0},
@@ -83,6 +83,11 @@ local function on_built_entity(event)
         return
     end
 
+    if ghost and #underground_surface.find_entities( {pipe_entity_definition.position,pipe_entity_definition.position} ) > 0 then
+        -- bail out because there's already something where we'd place a ghost
+        return
+    end
+
     if underground_surface.can_fast_replace(pipe_entity_definition) then
         local ghost = underground_surface.find_entity("entity-ghost", pipe_entity_definition.position)
         if ghost and ghost.ghost_name == pipe_entity_name then
@@ -95,26 +100,55 @@ local function on_built_entity(event)
 
     -- look at the three possible locations for another underground to connect to
     for _, neighbor_candidate in pairs(neighbor_info) do
-        local neighbor_entity = underground_surface.find_entity(
-            underground_name,
-            {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
-        )
-        local neighbor_ghost
-        if ghost then
-            neighbor_ghost = underground_surface.find_entity(
-                "entity-ghost",
-                {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
-            )
+        local candidate_pos = {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
+        local place = false
+        -- first, check for a matching underground pipe
+        local neighbor_entity = underground_surface.find_entity( underground_name, candidate_pos )
+        if neighbor_entity and neighbor_entity.name == underground_name and neighbor_entity.direction == neighbor_candidate.dir then
+            place = true
         end
-        if neighbor_ghost and neighbor_ghost.ghost_name == underground_name and neighbor_ghost.direction == neighbor_candidate.dir or
-           neighbor_entity and neighbor_entity.name == underground_name and neighbor_entity.direction == neighbor_candidate.dir then
-            -- found one in the right place and direction
+        local neighbor_ghost
+        if ghost and not place then
+            -- check for a matching underground pipe ghost
+            neighbor_ghost = underground_surface.find_entity( "entity-ghost", candidate_pos )
+        end
+        if neighbor_ghost and neighbor_ghost.ghost_name == underground_name and neighbor_ghost.direction == neighbor_candidate.dir then
+            place = true
+        end
+        if not place then
+            -- check for a matching other entity with a fluidbox connection
+            local neighbor_entities = underground_surface.find_entities( { candidate_pos, candidate_pos } )
+            for _,entity in pairs(neighbor_entities) do
+                if entity.type ~= "pipe" and entity.type ~= "pipe-to-ground" and entity.fluidbox and #entity.fluidbox > 0 then
+                    ---@type uint
+                    for i = 1, #entity.fluidbox do
+                        local prototypes = entity.fluidbox.get_prototype(i)
+                        if #prototypes == 0 then
+                            prototypes = {prototypes}
+                        end
+                        for _,prototype in pairs(prototypes) do
+                            for _,pipe_connection in pairs(prototype.pipe_connections) do
+                                local position = pipe_connection.positions[( entity.direction / 2 ) + 1]
+                                if entity.position.x + position.x == pipe_entity_definition.position[1] and entity.position.y + position.y == pipe_entity_definition.position[2] then
+                                    place = true
+                                    goto bail_neighbor_entities
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        ::bail_neighbor_entities::
+        if place then
+            -- found something to connect to
             if ghost or game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name) then
-                -- we have a pipe in inventory, so spend it
+                -- we're placing a ghost or have a pipe in inventory
                 if not ghost then
+                    -- spend the pipe from inventory
                     game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
                 end
-                -- to place the pipe entity
+                -- to place the pipe or ghost entity
                 underground_surface.create_entity(pipe_entity_definition)
             end
             break

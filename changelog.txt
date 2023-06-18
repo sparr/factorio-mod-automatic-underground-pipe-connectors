@@ -4,6 +4,7 @@ Date: ????
   Features:
     - Replace ghost pipes
     - Place ghost pipes when placing ghost underground pipes
+    - Place ghosts/pipes when placing near non-pipe entities with fluid connections
 ---------------------------------------------------------------------------------------------------
 Version: 1.0.4
 Date: 2021-12-28
