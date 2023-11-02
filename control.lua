@@ -122,6 +122,9 @@ local function on_built_entity(event)
                 if entity.type ~= "pipe" and entity.type ~= "pipe-to-ground" and entity.fluidbox and #entity.fluidbox > 0 then
                     ---@type uint
                     for i = 1, #entity.fluidbox do
+                        if entity.type == "fluid-wagon" or (entity.type == "fluid-turret" and i > 1) then
+                            break
+                        end
                         local prototypes = entity.fluidbox.get_prototype(i)
                         if #prototypes == 0 then
                             prototypes = {prototypes}
