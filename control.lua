@@ -170,11 +170,17 @@ global.pipe_lookup = global.pipe_lookup or {}
 --- Find recipes that produce underground pipes, try to figure out which pipe they belong with, save results to global lookup table
 local function rebuild_index()
     --TODO recursively search through ingredient recipes to find pipe->X->Y->Z->underground like SchallPipeScaling
-    local underground_recipe_prototypes = game.get_filtered_recipe_prototypes({{filter="has-product-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe-to-ground"}}}}},{filter="has-ingredient-item",mode="and",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe"}}}}}})
+    --TODO handle undergrounds with multiple recipes or multiple ingredients per recipe
+    local underground_recipe_prototypes = game.get_filtered_recipe_prototypes(
+        {
+            {filter="has-product-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe-to-ground"}}}}},
+            {mode="and",filter="has-ingredient-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe"}}}}}
+        }
+    )
     for _, urp_prototype in pairs(underground_recipe_prototypes) do
         local underground_entity_name, pipe_item_name, pipe_entity_name
         for _, product in pairs(urp_prototype.products) do
-            if game.entity_prototypes[game.item_prototypes[product.name].place_result.name].type == "pipe-to-ground" then
+            if game.item_prototypes[product.name].place_result and game.entity_prototypes[game.item_prototypes[product.name].place_result.name].type == "pipe-to-ground" then
                 underground_entity_name = game.item_prototypes[product.name].place_result.name
             end
         end
