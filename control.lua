@@ -2,12 +2,12 @@
 -- keys are underground pipe directions
 -- values describe the possible relative locations and directions of another to connect to
 
----@type table<integer, { pos: Vector, dir: defines.direction }[]>
-local direction_to_neighbors = {
+---@type table<defines.direction, { pos: Vector, dir: defines.direction }[]>
+local directions_to_neighbors = {
     [defines.direction.north] = { -- for an underground pipe pointing north
-        {pos={-1,-1}, dir=defines.direction.east }, -- one space ahead and left
-        {pos={ 0,-2}, dir=defines.direction.south}, -- two spaces ahead
-        {pos={ 1,-1}, dir=defines.direction.west }, -- one space ahead and right
+        {pos={-1,-1}, dir=defines.direction.east }, -- one space ahead and left, a pipe pointing east would trigger a connection
+        {pos={ 0,-2}, dir=defines.direction.south}, -- two spaces ahead, pointing south
+        {pos={ 1,-1}, dir=defines.direction.west }, -- one space ahead and right, pointing west
     },
     [defines.direction.east ] = {
         {pos={ 1,-1}, dir=defines.direction.south},
@@ -37,49 +37,51 @@ local direction_to_delta = {
 
 ---@param event EventData.on_built_entity
 local function on_built_entity(event)
-    -- locals for efficient repeat access
-    local underground_entity = event.created_entity
-    local underground_name
-    local ghost = false
-    if underground_entity.type == "entity-ghost" then
-        ghost = true
-        underground_name = underground_entity.ghost_name
-    else
-        underground_name = underground_entity.name
-    end
-    local pipe_lookup = global.pipe_lookup[underground_name]
-    if not pipe_lookup then return end -- we don't know what pipe goes with this underground pipe
+    local built_underground_entity = event.created_entity
+    local underground_entity_name
 
-    local underground_surface = underground_entity.surface
-    local underground_direction = underground_entity.direction
-    local underground_position = underground_entity.position
-    local neighbor_info = direction_to_neighbors[underground_direction]
-    local pipe_position = direction_to_delta[underground_direction]
-    local pipe_item_name = pipe_lookup[1]
-    local pipe_entity_name = pipe_lookup[2]
+    local placing_ghost
+    if built_underground_entity.type == "entity-ghost" then
+        placing_ghost = true
+        underground_entity_name = built_underground_entity.ghost_name
+    else
+        placing_ghost = false
+        underground_entity_name = built_underground_entity.name
+    end
+
+    local pipe_item_and_entity = global.pipe_lookup[underground_entity_name]
+    if not pipe_item_and_entity then return end -- we don't know what pipe goes with this underground pipe, bail out
+
+    local underground_surface = built_underground_entity.surface
+    local underground_direction = built_underground_entity.direction
+    local underground_position = built_underground_entity.position
+    local neighbors_directions = directions_to_neighbors[underground_direction]
+    local pipe_position_delta = direction_to_delta[underground_direction]
+    local pipe_item_name = pipe_item_and_entity.item
+    local pipe_entity_name = pipe_item_and_entity.entity
 
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
-    if not ghost and not game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name) then
-        ghost = true;
+    if not placing_ghost then
+        placing_ghost = not game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name)
     end
 
     ---@class EntityEtc: LuaEntity, LuaSurface.create_entity_param.base, LuaSurface.can_place_entity_param, LuaSurface.can_fast_replace_param
     ---@type EntityEtc
     local pipe_entity_definition = {
-        name = ghost and "entity-ghost" or pipe_entity_name,
-        position = {underground_position.x + pipe_position[1], underground_position.y + pipe_position[2]},
+        name = placing_ghost and "entity-ghost" or pipe_entity_name,
+        position = {underground_position.x + pipe_position_delta[1], underground_position.y + pipe_position_delta[2]},
 
         -- properties just for create_entity
-        force = underground_entity.force,
-        last_user = underground_entity.last_user,
+        force = built_underground_entity.force,
+        last_user = built_underground_entity.last_user,
         raise_built = true,
         create_build_effect_smoke = true,
         spawn_decorations = true,
 
         -- properties just for can_place_entity
-        build_check_type = ghost and defines.build_check_type.script_ghost or defines.build_check_type.manual,
+        build_check_type = placing_ghost and defines.build_check_type.script_ghost or defines.build_check_type.manual,
     }
-    if ghost then
+    if placing_ghost then
         pipe_entity_definition.inner_name = pipe_entity_name
     end
 
@@ -88,7 +90,7 @@ local function on_built_entity(event)
         return
     end
 
-    if ghost and #underground_surface.find_entities( {pipe_entity_definition.position,pipe_entity_definition.position} ) > 0 then
+    if placing_ghost and #underground_surface.find_entities( {pipe_entity_definition.position,pipe_entity_definition.position} ) > 0 then
         -- bail out because there's already something where we'd place a ghost
         return
     end
@@ -104,21 +106,19 @@ local function on_built_entity(event)
     end
 
     -- look at the three possible locations for another underground to connect to
-    for _, neighbor_candidate in pairs(neighbor_info) do
+    for _, neighbor_candidate in pairs(neighbors_directions) do
         local candidate_pos = {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
         local place = false
         -- first, check for a matching underground pipe
-        local neighbor_entity = underground_surface.find_entity( underground_name, candidate_pos )
-        if neighbor_entity and neighbor_entity.name == underground_name and neighbor_entity.direction == neighbor_candidate.dir then
+        local neighbor_entity = underground_surface.find_entity( underground_entity_name, candidate_pos )
+        if neighbor_entity and neighbor_entity.name == underground_entity_name and neighbor_entity.direction == neighbor_candidate.dir then
             place = true
-        end
-        local neighbor_ghost
-        if ghost and not place then
+        elseif placing_ghost then
             -- check for a matching underground pipe ghost
-            neighbor_ghost = underground_surface.find_entity( "entity-ghost", candidate_pos )
-        end
-        if neighbor_ghost and neighbor_ghost.ghost_name == underground_name and neighbor_ghost.direction == neighbor_candidate.dir then
-            place = true
+            local neighbor_ghost = underground_surface.find_entity( "entity-ghost", candidate_pos )
+            if neighbor_ghost and neighbor_ghost.ghost_name == underground_entity_name and neighbor_ghost.direction == neighbor_candidate.dir then
+                place = true
+            end
         end
         if not place then
             -- check for a matching other entity with a fluidbox connection
@@ -138,6 +138,7 @@ local function on_built_entity(event)
                             for _,pipe_connection in pairs(prototype.pipe_connections) do
                                 local position = pipe_connection.positions[( entity.direction / 2 ) + 1]
                                 if entity.position.x + position.x == pipe_entity_definition.position[1] and entity.position.y + position.y == pipe_entity_definition.position[2] then
+                                    -- this neighbor has a fluidbox connection we can connect to
                                     place = true
                                     goto bail_neighbor_entities
                                 end
@@ -149,50 +150,56 @@ local function on_built_entity(event)
         end
         ::bail_neighbor_entities::
         if place then
-            -- found something to connect to
-            if ghost or game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name) then
-                -- we're placing a ghost or have a pipe in inventory
-                if not ghost then
-                    -- spend the pipe from inventory
-                    game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
-                end
-                -- to place the pipe or ghost entity
-                underground_surface.create_entity(pipe_entity_definition)
+            -- found something to connect to!
+            if not placing_ghost then
+                -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
+                game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
             end
+            -- place the pipe or ghost entity
+            underground_surface.create_entity(pipe_entity_definition)
+            -- no need to check other potential neighbors
             break
         end
     end
 end
 
----@type table<string, string[]>
+--- Lookup table from underground pipe entity to the equivalent pipe entity and item, based on recipes
+---@type table<string, {item:string, entity:string}>
 global.pipe_lookup = global.pipe_lookup or {}
 
---- Find recipes that produce underground pipes, try to figure out which pipe they belong with, save results to global lookup table
+--- Find recipes that produce underground pipes to match them to pipes, save results to `global.pipe_lookup`
 local function rebuild_index()
-    --TODO recursively search through ingredient recipes to find pipe->X->Y->Z->underground like SchallPipeScaling
-    --TODO handle undergrounds with multiple recipes or multiple ingredients per recipe
+    -- TODO recursively search through ingredient recipes to find pipe->X->Y->Z->underground like SchallPipeScaling
+    -- TODO handle undergrounds with multiple recipes or multiple ingredients per recipe
     local underground_recipe_prototypes = game.get_filtered_recipe_prototypes(
         {
             {filter="has-product-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe-to-ground"}}}}},
             {mode="and",filter="has-ingredient-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe"}}}}}
         }
     )
-    for _, urp_prototype in pairs(underground_recipe_prototypes) do
+    for _, underground_recipe_prototype in pairs(underground_recipe_prototypes) do
         local underground_entity_name, pipe_item_name, pipe_entity_name
-        for _, product in pairs(urp_prototype.products) do
+        -- Find the entity for the first recipe product that is a pipe-to-ground
+        for _, product in pairs(underground_recipe_prototype.products) do
             if product.type == "item" and game.item_prototypes[product.name].place_result and game.entity_prototypes[game.item_prototypes[product.name].place_result.name].type == "pipe-to-ground" then
                 underground_entity_name = game.item_prototypes[product.name].place_result.name
+                break
             end
         end
-        for _, ingredient in pairs(urp_prototype.ingredients) do
+        if underground_entity_name == nil then goto continue_underground_recipe_prototype end
+        -- Find the entity and item for the first recipe ingredient that is a pipe
+        for _, ingredient in pairs(underground_recipe_prototype.ingredients) do
             if ingredient.type == "item" and game.item_prototypes[ingredient.name].place_result and game.entity_prototypes[game.item_prototypes[ingredient.name].place_result.name].type == "pipe" then
                 pipe_item_name = ingredient.name
                 pipe_entity_name = game.item_prototypes[ingredient.name].place_result.name
+                break
             end
         end
         if underground_entity_name and pipe_item_name and pipe_entity_name then
-            global.pipe_lookup[underground_entity_name] = {pipe_item_name, pipe_entity_name}
+            -- Remember that when this underground entity is placed, this pipe item and entity are the ones to use
+            global.pipe_lookup[underground_entity_name] = {item = pipe_item_name, entity = pipe_entity_name}
         end
+        ::continue_underground_recipe_prototype::
     end
 end
 
