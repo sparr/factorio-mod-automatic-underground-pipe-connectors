@@ -57,13 +57,13 @@ local function on_built_entity(event)
     local pipe_position = direction_to_delta[underground_direction]
     local pipe_item_name = pipe_lookup[1]
     local pipe_entity_name = pipe_lookup[2]
-    
+
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
     if not ghost and not game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name) then
         ghost = true;
     end
 
-    ---@class EntityEtc: LuaEntity, LuaSurface.create_entity_param, LuaSurface.can_place_entity_param, LuaSurface.can_fast_replace_param
+    ---@class EntityEtc: LuaEntity, LuaSurface.create_entity_param.base, LuaSurface.can_place_entity_param, LuaSurface.can_fast_replace_param
     ---@type EntityEtc
     local pipe_entity_definition = {
         name = ghost and "entity-ghost" or pipe_entity_name,
