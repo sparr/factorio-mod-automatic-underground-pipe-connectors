@@ -180,12 +180,12 @@ local function rebuild_index()
     for _, urp_prototype in pairs(underground_recipe_prototypes) do
         local underground_entity_name, pipe_item_name, pipe_entity_name
         for _, product in pairs(urp_prototype.products) do
-            if game.item_prototypes[product.name].place_result and game.entity_prototypes[game.item_prototypes[product.name].place_result.name].type == "pipe-to-ground" then
+            if product.type == "item" and game.item_prototypes[product.name].place_result and game.entity_prototypes[game.item_prototypes[product.name].place_result.name].type == "pipe-to-ground" then
                 underground_entity_name = game.item_prototypes[product.name].place_result.name
             end
         end
         for _, ingredient in pairs(urp_prototype.ingredients) do
-            if game.item_prototypes[ingredient.name].place_result and game.entity_prototypes[game.item_prototypes[ingredient.name].place_result.name].type == "pipe" then
+            if ingredient.type == "item" and game.item_prototypes[ingredient.name].place_result and game.entity_prototypes[game.item_prototypes[ingredient.name].place_result.name].type == "pipe" then
                 pipe_item_name = ingredient.name
                 pipe_entity_name = game.item_prototypes[ingredient.name].place_result.name
             end
