@@ -65,7 +65,7 @@ local function on_built_entity(event)
         placing_ghost = not game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name)
     end
 
-    ---@class EntityEtc: LuaEntity, LuaSurface.create_entity_param.base, LuaSurface.can_place_entity_param, LuaSurface.can_fast_replace_param
+    ---@alias EntityEtc LuaEntity|LuaSurface.create_entity_param.base|LuaSurface.can_place_entity_param|LuaSurface.can_fast_replace_param
     ---@type EntityEtc
     local pipe_entity_definition = {
         name = placing_ghost and "entity-ghost" or pipe_entity_name,
@@ -85,7 +85,7 @@ local function on_built_entity(event)
         pipe_entity_definition.inner_name = pipe_entity_name
     end
 
-    if not underground_surface.can_place_entity(pipe_entity_definition) then
+    if not underground_surface.can_place_entity(pipe_entity_definition --[[@as LuaSurface.can_place_entity_param]]) then
         -- bail out because we can't place a pipe, could be blocked or a fluid mixing violation
         return
     end
@@ -95,7 +95,7 @@ local function on_built_entity(event)
         return
     end
 
-    if underground_surface.can_fast_replace(pipe_entity_definition) then
+    if underground_surface.can_fast_replace(pipe_entity_definition --[[@as LuaSurface.can_fast_replace_param]]) then
         local ghost = underground_surface.find_entity("entity-ghost", pipe_entity_definition.position)
         if ghost and ghost.ghost_name == pipe_entity_name then
             -- don't bail out, matching ghost is ok to replace
@@ -156,7 +156,7 @@ local function on_built_entity(event)
                 game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
             end
             -- place the pipe or ghost entity
-            underground_surface.create_entity(pipe_entity_definition)
+            underground_surface.create_entity(pipe_entity_definition --[[@as LuaSurface.create_entity_param]])
             -- no need to check other potential neighbors
             break
         end
