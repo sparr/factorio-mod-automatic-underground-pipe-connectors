@@ -1,13 +1,14 @@
 local util = require("util")
 
----@class (exact) Global
+---@class (exact) Storage
 ---@field pipe_lookup PipeLookup
----@type Global
-global=global
+---@field index_rebuilt_tick integer
+---@type Storage
+storage=storage
 
 --- Lookup table from underground pipe entity to the equivalent pipe entity and item, based on recipes
 ---@alias PipeLookup table<string, {item:string, entity:string}>
-global.pipe_lookup = global.pipe_lookup or {}
+storage.pipe_lookup = storage.pipe_lookup or {}
 
 ---Map from underground pipe direction to the locations and directions of neighbors it might connect to by adding a single pipe
 ---@type { [defines.direction]: { pos: Vector, dir: defines.direction }[] }
@@ -38,15 +39,14 @@ local directions_to_neighbors = {
 ---@alias EntityEtc LuaEntity|LuaSurface.create_entity_param.base|LuaSurface.can_place_entity_param|LuaSurface.can_fast_replace_param
 
 ---@param entity LuaEntity
----@param fluidbox_prototypes LuaFluidBoxPrototype[]
 ---@param pipe_entity_definition EntityEtc
 ---@return boolean place
-local function should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_entity_definition, fluidbox_prototypes)
-    for _,prototype in pairs(fluidbox_prototypes) do
-        for _,pipe_connection in pairs(prototype.pipe_connections) do
-            local position = pipe_connection.positions[( entity.direction / 2 ) + 1]
-            if entity.position.x + position.x == pipe_entity_definition.position[1] and entity.position.y + position.y == pipe_entity_definition.position[2] then
-                -- this neighbor has a fluidbox connection we can connect to
+local function should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_entity_definition)
+    local fluidbox = entity.fluidbox
+    for i = 1, #fluidbox do
+        for _, pipe_connection in pairs( fluidbox.get_pipe_connections(i) ) do
+            if pipe_entity_definition.position[1] == pipe_connection.target_position.x and
+               pipe_entity_definition.position[2] == pipe_connection.target_position.y then
                 return true
             end
         end
@@ -57,7 +57,7 @@ end
 
 ---@param event EventData.on_built_entity
 local function on_built_entity(event)
-    local built_underground_entity = event.created_entity
+    local built_underground_entity = event.entity
     local underground_entity_name --[[@type string]]
 
     local placing_ghost --[[@type boolean]]
@@ -69,7 +69,7 @@ local function on_built_entity(event)
         underground_entity_name = built_underground_entity.name
     end
 
-    local pipe_item_and_entity = global.pipe_lookup[underground_entity_name]
+    local pipe_item_and_entity = storage.pipe_lookup[underground_entity_name]
     if not pipe_item_and_entity then return end -- we don't know what pipe goes with this underground pipe, bail out
 
     local underground_surface = built_underground_entity.surface
@@ -142,42 +142,30 @@ local function on_built_entity(event)
             end
         end
         if not place then
-            -- check for a matching other entity with a fluidbox connection
+            -- check for a matching non-pipe entity with a fluidbox connection
             local neighbor_entities = underground_surface.find_entities( { candidate_pos, candidate_pos } )
             for _,entity in pairs(neighbor_entities) do
                 if entity.type == "fluid-wagon" or (entity.type == "entity-ghost" and entity.ghost_type == "fluid-wagon") then
+                    -- these have fluidbox connections for pumps, but not for pipes
                     goto continue_neighbor_entities
                 end
-                if entity.type == "entity-ghost" then
-                    if entity.ghost_type ~= "pipe" and entity.ghost_type ~= "pipe-to-ground" and #entity.ghost_prototype.fluidbox_prototypes > 0 then
-                        ---@type uint
-                        for i = 1, #entity.ghost_prototype.fluidbox_prototypes do
-                            if entity.ghost_type == "fluid-turret" and i > 1 then
-                                break
-                            end
-                            local prototypes = {entity.ghost_prototype.fluidbox_prototypes[i]}
-                            if should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_entity_definition, prototypes) then
-                                place = true
-                                goto bail_neighbor_entities
-                            end
-                        end
-                    end
-                else
-                    if entity.type ~= "pipe" and entity.type ~= "pipe-to-ground" and entity.fluidbox and #entity.fluidbox > 0 then
-                        ---@type uint
-                        for i = 1, #entity.fluidbox do
-                            if entity.type == "fluid-turret" and i > 1 then
-                                break
-                            end
-                            local prototypes = entity.fluidbox.get_prototype(i)
-                            if #prototypes == 0 then
-                                prototypes = {prototypes}
-                            end
-                            if should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_entity_definition, prototypes) then
-                                place = true
-                                goto bail_neighbor_entities
-                            end
-                        end
+                if  (
+                        (
+                            entity.type == "entity-ghost" and
+                            entity.ghost_type ~= "pipe" and
+                            entity.ghost_type ~= "pipe-to-ground"
+                        ) or (
+                            entity.type ~= "pipe" and
+                            entity.type ~= "pipe-to-ground"
+                        )
+                    ) and (
+                        entity.fluidbox and
+                        #entity.fluidbox > 0
+                    )
+                then
+                    if should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_entity_definition) then
+                        place = true
+                        goto bail_neighbor_entities
                     end
                 end
                 ::continue_neighbor_entities::
@@ -202,7 +190,11 @@ end
 local function rebuild_index()
     -- TODO recursively search through ingredient recipes to find pipe->X->Y->Z->underground like SchallPipeScaling
     -- TODO handle undergrounds with multiple recipes or multiple ingredients per recipe
-    local underground_recipe_prototypes = game.get_filtered_recipe_prototypes(
+    if storage.index_rebuilt_tick == game.tick then
+        return
+    end
+    storage.index_rebuilt_tick = game.tick
+    local underground_recipe_prototypes = prototypes.get_recipe_filtered(
         {
             {filter="has-product-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe-to-ground"}}}}},
             {mode="and",filter="has-ingredient-item",elem_filters={{filter="place-result",elem_filters={{filter="type",type="pipe"}}}}}
@@ -214,23 +206,25 @@ local function rebuild_index()
         local pipe_entity_name --[[@type string]]
         -- Find the entity for the first recipe product that is a pipe-to-ground
         for _, product in pairs(underground_recipe_prototype.products) do
-            if product.type == "item" and game.item_prototypes[product.name].place_result and game.entity_prototypes[game.item_prototypes[product.name].place_result.name].type == "pipe-to-ground" then
-                underground_entity_name = game.item_prototypes[product.name].place_result.name
+            local result = product.type == "item" and prototypes.item[product.name].place_result
+            if result and prototypes.entity[result.name].type == "pipe-to-ground" then
+                underground_entity_name = result.name
                 break
             end
         end
         if underground_entity_name == nil then goto continue_underground_recipe_prototype end
         -- Find the entity and item for the first recipe ingredient that is a pipe
         for _, ingredient in pairs(underground_recipe_prototype.ingredients) do
-            if ingredient.type == "item" and game.item_prototypes[ingredient.name].place_result and game.entity_prototypes[game.item_prototypes[ingredient.name].place_result.name].type == "pipe" then
+            local result = ingredient.type == "item" and prototypes.item[ingredient.name].place_result
+            if result and prototypes.entity[result.name].type == "pipe" then
                 pipe_item_name = ingredient.name
-                pipe_entity_name = game.item_prototypes[ingredient.name].place_result.name
+                pipe_entity_name = result.name
                 break
             end
         end
         if underground_entity_name and pipe_item_name and pipe_entity_name then
             -- Remember that when this underground entity is placed, this pipe item and entity are the ones to use
-            global.pipe_lookup[underground_entity_name] = {item = pipe_item_name, entity = pipe_entity_name}
+            storage.pipe_lookup[underground_entity_name] = {item = pipe_item_name, entity = pipe_entity_name}
         end
         ::continue_underground_recipe_prototype::
     end
