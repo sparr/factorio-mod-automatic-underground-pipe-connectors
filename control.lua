@@ -82,7 +82,12 @@ local function on_built_entity(event)
 
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
     if not placing_ghost then
-        placing_ghost = not game.players[event.player_index].get_main_inventory().find_item_stack(pipe_item_name)
+        local player = game.players[event.player_index]
+        local inventory = player.get_main_inventory()
+        if inventory then
+            local stack = inventory.find_item_stack(pipe_item_name)
+            placing_ghost = not stack
+        end
     end
 
     ---@type EntityEtc
