@@ -91,6 +91,8 @@ local function on_built_entity(event)
         if inventory then
             local stack = inventory.find_item_stack(pipe_item_name)
             placing_ghost = not stack
+        else
+            placing_ghost = true
         end
     end
 
@@ -223,7 +225,13 @@ local function on_built_entity(event)
             -- found something to connect to!
             if not placing_ghost then
                 -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
-                game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
+                local player = game.players[event.player_index]
+                local inventory = player.get_main_inventory()
+                if inventory then
+                    inventory.remove({name=pipe_item_name})
+                else
+                    player.print("Placed a pipe for free. This shouldn't happen. Please report a bug on the Automatic Underground Pipe Connectors mod discussion page or github issue tracker, including your game save.")
+                end
             end
             ---@type boolean
             local tile_failed = false
