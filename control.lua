@@ -79,6 +79,10 @@ local function on_built_entity(event)
     local pipe_position_delta = util.direction_vectors[underground_direction]
     local pipe_item_name = pipe_item_and_entity.item
     local pipe_entity_name = pipe_item_and_entity.entity
+    local pipe_position = {
+        underground_position.x + pipe_position_delta[1],
+        underground_position.y + pipe_position_delta[2]
+    }
 
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
     if not placing_ghost then
@@ -90,11 +94,44 @@ local function on_built_entity(event)
         end
     end
 
+    local place_tile = false;
+    local existing_tile = underground_surface.get_tile( pipe_position[ 1 ], pipe_position[ 2 ] );
+    local cover_tile = existing_tile.prototype.default_cover_tile
+    local tile_ghost_definition
+    if cover_tile then
+        if cover_tile.name == "ice-platform" then
+            -- can't build pipes on ice platform
+            return
+        end
+        placing_ghost = true;
+        local existing_tile_ghost = underground_surface.find_entity( "tile-ghost", pipe_position )
+        if existing_tile_ghost == nil then
+            place_tile = true;
+            ---@type EntityEtc
+            tile_ghost_definition = {
+                name = "tile-ghost",
+                position = pipe_position,
+                inner_name = cover_tile.name,
+                -- properties just for create_entity
+                force = built_underground_entity.force,
+                last_user = built_underground_entity.last_user,
+                raise_built = true,
+                create_build_effect_smoke = true,
+                spawn_decorations = true,
+                -- properties just for can_place_entity
+                build_check_type = defines.build_check_type.script_ghost,
+            }
+            if not underground_surface.can_place_entity( tile_ghost_definition --[[@as LuaSurface.can_place_entity_param]] ) then
+            -- bail out because we can't place the tile ghost
+                return
+            end
+        end
+    end
+
     ---@type EntityEtc
     local pipe_entity_definition = {
         name = placing_ghost and "entity-ghost" or pipe_entity_name,
-        position = {underground_position.x + pipe_position_delta[1], underground_position.y + pipe_position_delta[2]},
-
+        position = pipe_position,
         -- properties just for create_entity
         force = built_underground_entity.force,
         last_user = built_underground_entity.last_user,
@@ -114,9 +151,14 @@ local function on_built_entity(event)
         return
     end
 
-    if placing_ghost and #underground_surface.find_entities( {pipe_entity_definition.position,pipe_entity_definition.position} ) > 0 then
-        -- bail out because there's already something where we'd place a ghost
-        return
+    if placing_ghost then
+        local found_entities = underground_surface.find_entities( {pipe_entity_definition.position,pipe_entity_definition.position} )
+        for _,entity in pairs(found_entities) do
+            if entity.type ~= "tile-ghost" then
+                -- bail out because there's already something where we'd place a ghost
+                return
+            end
+        end
     end
 
     if underground_surface.can_fast_replace(pipe_entity_definition --[[@as LuaSurface.can_fast_replace_param]]) then
@@ -183,8 +225,15 @@ local function on_built_entity(event)
                 -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
                 game.players[event.player_index].get_main_inventory().remove({name=pipe_item_name})
             end
-            -- place the pipe or ghost entity
-            underground_surface.create_entity(pipe_entity_definition --[[@as LuaSurface.create_entity_param]])
+            ---@type boolean
+            local tile_failed = false
+            if place_tile then
+                tile_failed = not underground_surface.create_entity( tile_ghost_definition --[[@as LuaSurface.create_entity_param]] )
+            end
+            if not tile_failed then
+                -- place the pipe or ghost entity
+                underground_surface.create_entity(pipe_entity_definition --[[@as LuaSurface.create_entity_param]])
+            end
             -- no need to check other potential neighbors
             break
         end

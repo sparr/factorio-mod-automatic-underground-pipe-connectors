@@ -1,6 +1,8 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.1
-Date: ????
+Date: 2024-11-01
+  Features:
+    - Place tile ghost to support automatic connector over water, space, lava, etc
   Bugfixes:
     - Crash on missing player inventory
 ---------------------------------------------------------------------------------------------------
