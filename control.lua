@@ -39,14 +39,14 @@ local directions_to_neighbors = {
 ---@alias EntityEtc LuaEntity|LuaSurface.create_entity_param.base|LuaSurface.can_place_entity_param|LuaSurface.can_fast_replace_param
 
 ---@param entity LuaEntity
----@param pipe_entity_definition EntityEtc
+---@param position MapPosition
 ---@return boolean place
-local function should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_entity_definition)
+local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position)
     local fluidbox = entity.fluidbox
     for i = 1, #fluidbox do
         for _, pipe_connection in pairs( fluidbox.get_pipe_connections(i) ) do
-            if pipe_entity_definition.position[1] == pipe_connection.target_position.x and
-               pipe_entity_definition.position[2] == pipe_connection.target_position.y then
+            if position[1] == pipe_connection.target_position.x and
+               position[2] == pipe_connection.target_position.y then
                 return true
             end
         end
@@ -83,97 +83,21 @@ local function on_built_entity(event)
         underground_position.x + pipe_position_delta[1],
         underground_position.y + pipe_position_delta[2]
     }
+    local player = game.players[event.player_index]
+    local inventory = player.get_main_inventory()
+    local pipe_stack
 
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
     if not placing_ghost then
-        local player = game.players[event.player_index]
-        local inventory = player.get_main_inventory()
         if inventory then
-            local stack = inventory.find_item_stack(pipe_item_name)
-            placing_ghost = not stack
+            pipe_stack = inventory.find_item_stack(pipe_item_name)
+            placing_ghost = not pipe_stack
         else
             placing_ghost = true
         end
     end
 
-    local place_tile = false;
-    local existing_tile = underground_surface.get_tile( pipe_position[ 1 ], pipe_position[ 2 ] );
-    local cover_tile = existing_tile.prototype.default_cover_tile
-    local tile_ghost_definition
-    if cover_tile then
-        if cover_tile.name == "ice-platform" then
-            -- can't build pipes on ice platform
-            return
-        end
-        placing_ghost = true;
-        local existing_tile_ghost = underground_surface.find_entity( "tile-ghost", pipe_position )
-        if existing_tile_ghost == nil then
-            place_tile = true;
-            ---@type EntityEtc
-            tile_ghost_definition = {
-                name = "tile-ghost",
-                position = pipe_position,
-                inner_name = cover_tile.name,
-                -- properties just for create_entity
-                force = built_underground_entity.force,
-                player = event.player_index,
-                raise_built = true,
-                create_build_effect_smoke = true,
-                spawn_decorations = true,
-                -- properties just for can_place_entity
-                build_check_type = defines.build_check_type.script_ghost,
-            }
-            if not underground_surface.can_place_entity( tile_ghost_definition --[[@as LuaSurface.can_place_entity_param]] ) then
-            -- bail out because we can't place the tile ghost
-                return
-            end
-        end
-    end
-
-    ---@type EntityEtc
-    local pipe_entity_definition = {
-        name = placing_ghost and "entity-ghost" or pipe_entity_name,
-        position = pipe_position,
-        -- properties just for create_entity
-        force = built_underground_entity.force,
-        player = event.player_index,
-        raise_built = true,
-        create_build_effect_smoke = true,
-        spawn_decorations = true,
-
-        -- properties just for can_place_entity
-        build_check_type = placing_ghost and defines.build_check_type.script_ghost or defines.build_check_type.manual,
-    }
-    if placing_ghost then
-        pipe_entity_definition.inner_name = pipe_entity_name
-    end
-
-    if not underground_surface.can_place_entity(pipe_entity_definition --[[@as LuaSurface.can_place_entity_param]]) then
-        -- bail out because we can't place a pipe, could be blocked or a fluid mixing violation
-        return
-    end
-
-    if placing_ghost then
-        local found_entities = underground_surface.find_entities( {pipe_entity_definition.position,pipe_entity_definition.position} )
-        for _,entity in pairs(found_entities) do
-            if entity.type ~= "tile-ghost" then
-                -- bail out because there's already something where we'd place a ghost
-                return
-            end
-        end
-    end
-
-    if underground_surface.can_fast_replace(pipe_entity_definition --[[@as LuaSurface.can_fast_replace_param]]) then
-        local ghost = underground_surface.find_entity("entity-ghost", pipe_entity_definition.position)
-        if ghost and ghost.ghost_name == pipe_entity_name then
-            -- don't bail out, matching ghost is ok to replace
-        else
-            -- bail out because there's something here our pipe would fast replace
-            return
-        end
-    end
-
-    -- look at the three possible locations for another underground to connect to
+    -- look at the three possible locations for another underground or entity to connect to
     for _, neighbor_candidate in pairs(neighbors_directions) do
         local candidate_pos = {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
         local place = false
@@ -212,7 +136,7 @@ local function on_built_entity(event)
                         #entity.fluidbox > 0
                     )
                 then
-                    if should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_entity_definition) then
+                    if should_place_based_on_neighbor_fluidbox_prototypes(entity, pipe_position) then
                         place = true
                         goto bail_neighbor_entities
                     end
@@ -223,25 +147,21 @@ local function on_built_entity(event)
         ::bail_neighbor_entities::
         if place then
             -- found something to connect to!
-            if not placing_ghost then
-                -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
-                local player = game.players[event.player_index]
-                local inventory = player.get_main_inventory()
-                if inventory then
-                    inventory.remove({name=pipe_item_name})
-                else
-                    player.print("Placed a pipe for free. This shouldn't happen. Please report a bug on the Automatic Underground Pipe Connectors mod discussion page or github issue tracker, including your game save.")
-                end
+            local inv
+            if placing_ghost then
+                -- temporary inventory for swapping with the cursor for placement
+                inv = game.create_inventory(1)
+                inv.insert{name=pipe_item_name, count=1}
+                pipe_stack = inv[1]
             end
-            ---@type boolean
-            local tile_failed = false
-            if place_tile then
-                tile_failed = not underground_surface.create_entity( tile_ghost_definition --[[@as LuaSurface.create_entity_param]] )
+            player.cursor_stack.swap_stack(pipe_stack)
+            if not placing_ghost and player.can_build_from_cursor{position=pipe_position} then
+                player.build_from_cursor{position=pipe_position}
+            else
+                player.build_from_cursor{position=pipe_position, build_mode=defines.build_mode.forced}
             end
-            if not tile_failed then
-                -- place the pipe or ghost entity
-                underground_surface.create_entity(pipe_entity_definition --[[@as LuaSurface.create_entity_param]])
-            end
+            player.cursor_stack.swap_stack(pipe_stack)
+            if inv then inv.destroy() end
             -- no need to check other potential neighbors
             break
         end
