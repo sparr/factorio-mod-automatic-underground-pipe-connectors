@@ -254,5 +254,65 @@ end
 script.on_init(rebuild_index)
 script.on_configuration_changed(rebuild_index)
 
+remote.add_interface("automatic-underground-pipe-connectors", {
+    --- Allows mods to see what undergrounds are considered
+    ---@return PipeLookup
+    get_undergrounds = function()
+        return storage.pipe_lookup
+    end,
+    --- Allows mods to completely overwrite undergrounds
+    ---@param PipeLookup
+    set_undergrounds = function(new_lookup)
+        -- To make sure the new lookup is valid
+        for underground, item_pipe in pairs(new_lookup) do
+            -- To make sure the given table doesn't have extra fields
+            item_pipe = {item = item_pipe.item, entity = item_pipe.entity}
+            new_lookup[underground] = item_pipe
+            local underground_prototype = prototypes.entity[underground]
+            local pipe_prototype = prototypes.entity[item_pipe.entity]
+
+            if not prototypes.item[item_pipe.item]
+            or not pipe_prototype or pipe_prototype.type ~= "pipe"
+            or not underground_prototype or underground_prototype.type ~= "pipe-to-ground" do
+                error("Given underground and pipe are not valid: "..underground.." -> "..serpent.line(item_pipe))
+            end
+        end
+
+        storage.pipe_lookup = new_lookup
+    end,
+    --- Allows mods to add underground and pipe connections for when they don't follow the expected recipe pattern.
+    ---@param new_undergrounds PipeLookup
+    add_undergrounds = function(new_undergrounds)
+        for underground, item_pipe in pairs(new_undergrounds) do
+            -- To make sure the given table doesn't have extra fields
+            item_pipe = {item = item_pipe.item, entity = item_pipe.entity}
+            local underground_prototype = prototypes.entity[underground]
+            local pipe_prototype = prototypes.entity[item_pipe.entity]
+
+            if not prototypes.item[item_pipe.item]
+            or not pipe_prototype or pipe_prototype.type ~= "pipe"
+            or not underground_prototype or underground_prototype.type ~= "pipe-to-ground" do
+                error("Given underground and pipe are not valid: "..underground.." -> "..serpent.line(item_pipe))
+            end
+
+            if storage.pipe_lookup[underground] then
+                log("Overriding the pipe for '"..underground.."' with "..serpent.block(item_pipe))
+            end
+
+            storage.pipe_lookup[underground] = item_pipe
+        end
+    end,
+    --- Allows mods to remove undergrounds just in case
+    ---@param old_undergrounds string[]
+    remove_undergrounds = function(old_undergrounds)
+        for _, underground in pairs(old_undergrounds) do
+            if storage.pipe_lookup[underground] then
+                log("Removing the pipe for '"..underground.."'")
+                storage.pipe_lookup[underground] = nil
+            end
+        end
+    end,
+})
+
 script.on_event(defines.events.on_built_entity, on_built_entity, {{filter="type",type="pipe-to-ground"},{filter="ghost_type",type="pipe-to-ground"}})
 script.on_event(defines.events.on_object_destroyed, on_object_destroyed)
