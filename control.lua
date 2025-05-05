@@ -116,7 +116,7 @@ local function on_built_entity(event)
                 inner_name = cover_tile.name,
                 -- properties just for create_entity
                 force = built_underground_entity.force,
-                last_user = built_underground_entity.last_user,
+                player = event.player_index,
                 raise_built = true,
                 create_build_effect_smoke = true,
                 spawn_decorations = true,
@@ -136,7 +136,7 @@ local function on_built_entity(event)
         position = pipe_position,
         -- properties just for create_entity
         force = built_underground_entity.force,
-        last_user = built_underground_entity.last_user,
+        player = event.player_index,
         raise_built = true,
         create_build_effect_smoke = true,
         spawn_decorations = true,
