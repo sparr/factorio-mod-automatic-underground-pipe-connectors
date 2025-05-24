@@ -254,6 +254,25 @@ end
 script.on_init(rebuild_index)
 script.on_configuration_changed(rebuild_index)
 
+--- Filters out extra fields in the item_pipe and makes sure the references are valid entities and item
+---@param underground string
+---@param item_pipe {item:string, entity:string}
+---@return {item:string, entity:string} item_pipe Has been filtered of extra fields
+local function validate_connector(underground, item_pipe)
+    -- Filter out the extra fields
+    item_pipe = {item = item_pipe.item, entity = item_pipe.entity}
+    local underground_prototype = prototypes.entity[underground]
+    local pipe_prototype = prototypes.entity[item_pipe.entity]
+
+    if not prototypes.item[item_pipe.item]
+    or not pipe_prototype or pipe_prototype.type ~= "pipe"
+    or not underground_prototype or underground_prototype.type ~= "pipe-to-ground" do
+        error("Given underground and pipe are not valid: "..underground.." -> "..serpent.line(item_pipe))
+    end
+
+    return item_pipe
+end
+
 remote.add_interface("automatic-underground-pipe-connectors", {
     --- Allows mods to see what undergrounds are considered
     ---@return PipeLookup
@@ -265,17 +284,7 @@ remote.add_interface("automatic-underground-pipe-connectors", {
     set_undergrounds = function(new_lookup)
         -- To make sure the new lookup is valid
         for underground, item_pipe in pairs(new_lookup) do
-            -- To make sure the given table doesn't have extra fields
-            item_pipe = {item = item_pipe.item, entity = item_pipe.entity}
-            new_lookup[underground] = item_pipe
-            local underground_prototype = prototypes.entity[underground]
-            local pipe_prototype = prototypes.entity[item_pipe.entity]
-
-            if not prototypes.item[item_pipe.item]
-            or not pipe_prototype or pipe_prototype.type ~= "pipe"
-            or not underground_prototype or underground_prototype.type ~= "pipe-to-ground" do
-                error("Given underground and pipe are not valid: "..underground.." -> "..serpent.line(item_pipe))
-            end
+            new_lookup[underground] = validate_connector(underground, item_pipe)
         end
 
         storage.pipe_lookup = new_lookup
@@ -284,22 +293,7 @@ remote.add_interface("automatic-underground-pipe-connectors", {
     ---@param new_undergrounds PipeLookup
     add_undergrounds = function(new_undergrounds)
         for underground, item_pipe in pairs(new_undergrounds) do
-            -- To make sure the given table doesn't have extra fields
-            item_pipe = {item = item_pipe.item, entity = item_pipe.entity}
-            local underground_prototype = prototypes.entity[underground]
-            local pipe_prototype = prototypes.entity[item_pipe.entity]
-
-            if not prototypes.item[item_pipe.item]
-            or not pipe_prototype or pipe_prototype.type ~= "pipe"
-            or not underground_prototype or underground_prototype.type ~= "pipe-to-ground" do
-                error("Given underground and pipe are not valid: "..underground.." -> "..serpent.line(item_pipe))
-            end
-
-            if storage.pipe_lookup[underground] then
-                log("Overriding the pipe for '"..underground.."' with "..serpent.block(item_pipe))
-            end
-
-            storage.pipe_lookup[underground] = item_pipe
+            storage.pipe_lookup[underground] = validate_connector(underground, item_pipe)
         end
     end,
     --- Allows mods to remove undergrounds just in case
