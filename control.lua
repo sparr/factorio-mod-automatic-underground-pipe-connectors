@@ -264,9 +264,16 @@ local function validate_connector(underground, item_pipe)
     local underground_prototype = prototypes.entity[underground]
     local pipe_prototype = prototypes.entity[item_pipe.entity]
 
-    if not prototypes.item[item_pipe.item]
-    or not pipe_prototype or pipe_prototype.type ~= "pipe"
-    or not underground_prototype or underground_prototype.type ~= "pipe-to-ground" do
+    ---@type table<string, true>
+    local pipe_items = {}
+    for _, stack in pairs(pipe_prototype.items_to_place_this) do
+        pipe_items[stack.name] = true
+    end
+
+    if not pipe_items[item_pipe.item] -- The item needs to be able to place the pipe
+    or not prototypes.item[item_pipe.item] -- The item needs to exist (theoretically we can skip this since it was in an items_to_place_this)
+    or not pipe_prototype or pipe_prototype.type ~= "pipe" -- The pipe needs to be an actual pipe
+    or not underground_prototype or underground_prototype.type ~= "pipe-to-ground" then -- The underground needs to be an actual underground
         error("Given underground and pipe are not valid: "..underground.." -> "..serpent.line(item_pipe))
     end
 
