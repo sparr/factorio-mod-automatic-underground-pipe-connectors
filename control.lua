@@ -287,7 +287,7 @@ remote.add_interface("automatic-underground-pipe-connectors", {
         return storage.pipe_lookup
     end,
     --- Allows mods to completely overwrite undergrounds
-    ---@param PipeLookup
+    ---@param new_lookup PipeLookup
     set_undergrounds = function(new_lookup)
         -- To make sure the new lookup is valid
         for underground, item_pipe in pairs(new_lookup) do
