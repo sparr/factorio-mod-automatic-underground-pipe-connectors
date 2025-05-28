@@ -1,6 +1,8 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.4
 Date: ????
+  Features:
+    - Remote interface for reading, updating, replacing the underground to pipe lookup table
   Changes:
     - Refactor API usage to use build_from_cursor and support ice-platform
   Bugfixes:
