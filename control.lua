@@ -147,13 +147,19 @@ local function on_built_entity(event)
         ::bail_neighbor_entities::
         if place then
             -- found something to connect to!
-            local inv
+            -- temporary inventories for swapping with the cursor for placement
+            local empty_inv, ghost_inv
+            empty_inv = game.create_inventory(1)
+            -- this stack will hold the previous cursor contents
+            -- swapping straight to main inventory would require manually handling cursor_stack_temporary
+            temp_stack = empty_inv[1]
             if placing_ghost then
-                -- temporary inventory for swapping with the cursor for placement
-                inv = game.create_inventory(1)
-                inv.insert{name=pipe_item_name, count=1}
-                pipe_stack = inv[1]
+                ghost_inv = game.create_inventory(1)
+                ghost_inv.insert{name=pipe_item_name, count=1}
+                pipe_stack = ghost_inv[1]
             end
+            temp_stack_temp = player.cursor_stack_temporary
+            player.cursor_stack.swap_stack(temp_stack)
             player.cursor_stack.swap_stack(pipe_stack)
             if not placing_ghost and player.can_build_from_cursor{position=pipe_position} then
                 player.build_from_cursor{position=pipe_position}
@@ -161,7 +167,10 @@ local function on_built_entity(event)
                 player.build_from_cursor{position=pipe_position, build_mode=defines.build_mode.forced}
             end
             player.cursor_stack.swap_stack(pipe_stack)
-            if inv then inv.destroy() end
+            player.cursor_stack.swap_stack(temp_stack)
+            player.cursor_stack_temporary = temp_stack_temp
+            empty_inv.destroy()
+            if ghost_inv then ghost_inv.destroy() end
             -- no need to check other potential neighbors
             break
         end

@@ -3,6 +3,8 @@ Version: 2.0.4
 Date: ????
   Changes:
     - Refactor API usage to use build_from_cursor and support ice-platform
+  Bugfixes:
+    - Temporary blueprints no longer end up in the inventory
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.3
 Date: 2025-05-24
