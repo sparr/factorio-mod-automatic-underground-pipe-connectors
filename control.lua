@@ -6,6 +6,14 @@ local util = require("util")
 ---@type Storage
 storage=storage
 
+--- List of underground creation events this tick
+---@type EventData.on_built_entity[]
+local new_underground_events = {}
+
+--- Track the item used for triggering end of tick processing
+---@type integer
+local temp_item_reg_num
+
 --- Lookup table from underground pipe entity to the equivalent pipe entity and item, based on recipes
 ---@alias PipeLookup table<string, {item:string, entity:string}>
 storage.pipe_lookup = storage.pipe_lookup or {}
@@ -57,6 +65,17 @@ end
 
 ---@param event EventData.on_built_entity
 local function on_built_entity(event)
+    if #new_underground_events == 0 then
+        -- thanks to boskid, justarandomgeek, PennyJim, Osmo, Quezler, lukā for this trick to postpone processing to the end of the tick
+        temp_object = rendering.draw_line{surface=game.players[event.player_index].surface,color={0,0,0},width=0,from={0,0},to={0,0}}
+        temp_item_reg_num = script.register_on_object_destroyed(temp_object)
+        temp_object.destroy()
+    end
+    new_underground_events[#new_underground_events] = event
+end
+
+---@param event EventData.on_built_entity
+local function process_built_entity(event)
     local built_underground_entity = event.entity
     local underground_entity_name --[[@type string]]
 
@@ -221,7 +240,18 @@ local function rebuild_index()
     end
 end
 
+---@param event EventData.on_object_destroyed
+local function on_object_destroyed(event)
+    if event.registration_number == temp_item_reg_num then
+        for i,e in pairs(new_underground_events) do
+            process_built_entity(e)
+        end
+        new_underground_events = {}
+    end
+end
+
 script.on_init(rebuild_index)
 script.on_configuration_changed(rebuild_index)
 
 script.on_event(defines.events.on_built_entity, on_built_entity, {{filter="type",type="pipe-to-ground"},{filter="ghost_type",type="pipe-to-ground"}})
+script.on_event(defines.events.on_object_destroyed, on_object_destroyed)
