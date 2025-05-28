@@ -147,6 +147,7 @@ local function process_built_entity(event)
                             entity.ghost_type ~= "pipe" and
                             entity.ghost_type ~= "pipe-to-ground"
                         ) or (
+                            entity.type ~= "entity-ghost" and
                             entity.type ~= "pipe" and
                             entity.type ~= "pipe-to-ground"
                         )

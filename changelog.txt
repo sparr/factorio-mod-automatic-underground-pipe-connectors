@@ -6,6 +6,7 @@ Date: ????
   Bugfixes:
     - Temporary blueprints dropped to inventory
     - Undergrounds in blueprints creating pipes prematurely
+    - Ghost pipes counting as automatic connection targets
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.3
 Date: 2025-05-24
