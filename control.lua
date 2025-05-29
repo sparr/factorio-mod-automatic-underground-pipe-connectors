@@ -183,6 +183,7 @@ local function process_built_entity(event)
                 pipe_stack = ghost_inv[1]
             end
             temp_stack_temp = player.cursor_stack_temporary
+            local hand_location = player.hand_location
             player.cursor_stack.swap_stack(temp_stack)
             player.cursor_stack.swap_stack(pipe_stack)
             if not placing_ghost and player.can_build_from_cursor{position=pipe_position} then
@@ -192,6 +193,7 @@ local function process_built_entity(event)
             end
             player.cursor_stack.swap_stack(pipe_stack)
             player.cursor_stack.swap_stack(temp_stack)
+            player.hand_location = hand_location
             player.cursor_stack_temporary = temp_stack_temp
             empty_inv.destroy()
             if ghost_inv then ghost_inv.destroy() end
