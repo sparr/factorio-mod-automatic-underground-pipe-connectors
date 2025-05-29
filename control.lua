@@ -77,6 +77,10 @@ end
 ---@param event EventData.on_built_entity
 local function process_built_entity(event)
     local built_underground_entity = event.entity
+
+    if not built_underground_entity then return end
+    if not built_underground_entity.valid then return end
+
     local underground_entity_name --[[@type string]]
 
     local placing_ghost --[[@type boolean]]
