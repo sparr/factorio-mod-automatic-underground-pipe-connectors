@@ -106,6 +106,7 @@ local function process_built_entity(event)
         underground_position.x + pipe_position_delta[1],
         underground_position.y + pipe_position_delta[2]
     }
+    if underground_surface.entity_prototype_collides(pipe_entity_name, pipe_position, false) then return end
     local player = game.players[event.player_index]
     local inventory = player.get_main_inventory()
     local pipe_stack
