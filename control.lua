@@ -76,7 +76,8 @@ local function on_built_entity(event)
 end
 
 ---@param event EventData.on_built_entity
-local function process_built_entity(event)
+---@param new_undergrounds table<integer, boolean>
+local function process_built_entity(event, new_undergrounds)
     local built_underground_entity = event.entity
 
     if not built_underground_entity then return end
@@ -129,14 +130,18 @@ local function process_built_entity(event)
         -- first, check for a matching underground pipe
         local neighbor_entity = underground_surface.find_entity( underground_entity_name, candidate_pos )
         if neighbor_entity and neighbor_entity.name == underground_entity_name and neighbor_entity.direction == neighbor_candidate.dir then
-            place = true
+            if not new_undergrounds[neighbor_entity.unit_number] then
+                place = true
+            end
         end
         if not place then
             -- check for a matching underground pipe ghost
             local neighbor_ghost = underground_surface.find_entity( "entity-ghost", candidate_pos )
             if neighbor_ghost and neighbor_ghost.ghost_name == underground_entity_name and neighbor_ghost.direction == neighbor_candidate.dir then
-                place = true
-                placing_ghost = true
+                if not new_undergrounds[neighbor_ghost.unit_number] then
+                    place = true
+                    placing_ghost = true
+                end
             end
         end
         if not place then
@@ -252,8 +257,12 @@ end
 ---@param event EventData.on_object_destroyed
 local function on_object_destroyed(event)
     if event.registration_number == temp_item_reg_num then
+        local new_undergrounds = {}
         for i,e in pairs(new_underground_events) do
-            process_built_entity(e)
+            new_undergrounds[e.entity.unit_number] = true
+        end
+        for i,e in pairs(new_underground_events) do
+            process_built_entity(e, new_undergrounds)
         end
         new_underground_events = {}
     end

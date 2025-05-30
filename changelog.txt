@@ -1,6 +1,8 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.6
 Date: ????
+  Changes:
+    - No connections between any undergrounds created in the same tick, not just for blueprints
   Bugfixes:
     - Reserved inventory slot (hand icon) was lost for blueprint/pipe when mod triggered
     - Pipes no longer fast replace valves or other pipe-like entities
