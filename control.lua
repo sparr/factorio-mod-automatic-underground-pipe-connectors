@@ -72,7 +72,7 @@ local function on_built_entity(event)
         temp_item_reg_num = script.register_on_object_destroyed(temp_object)
         temp_object.destroy()
     end
-    new_underground_events[#new_underground_events] = event
+    new_underground_events[#new_underground_events+1] = event
 end
 
 ---@param event EventData.on_built_entity

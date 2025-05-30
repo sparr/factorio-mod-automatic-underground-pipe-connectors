@@ -5,6 +5,7 @@ Date: ????
     - Reserved inventory slot (hand icon) was lost for blueprint/pipe when mod triggered
     - Pipes no longer fast replace valves or other pipe-like entities
     - Pipes with weird connection offsets now connect correctly
+    - First underground of multiple created in a tick no longer ignored
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.5
 Date: 2025-05-29
