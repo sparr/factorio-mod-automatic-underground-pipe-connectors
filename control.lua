@@ -53,8 +53,9 @@ local function should_place_based_on_neighbor_fluidbox_prototypes(entity, positi
     local fluidbox = entity.fluidbox
     for i = 1, #fluidbox do
         for _, pipe_connection in pairs( fluidbox.get_pipe_connections(i) ) do
-            if position[1] == pipe_connection.target_position.x and
-               position[2] == pipe_connection.target_position.y then
+            -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
+            if position[1] == math.floor( ( pipe_connection.target_position.x + 0.25 ) * 2 ) / 2 and
+               position[2] == math.floor( ( pipe_connection.target_position.y + 0.25 ) * 2 ) / 2 then
                 return true
             end
         end
