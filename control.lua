@@ -259,7 +259,9 @@ local function on_object_destroyed(event)
     if event.registration_number == temp_item_reg_num then
         local new_undergrounds = {}
         for i,e in pairs(new_underground_events) do
-            new_undergrounds[e.entity.unit_number] = true
+            if e.entity and e.entity.valid then
+                new_undergrounds[e.entity.unit_number] = true
+            end
         end
         for i,e in pairs(new_underground_events) do
             process_built_entity(e, new_undergrounds)
