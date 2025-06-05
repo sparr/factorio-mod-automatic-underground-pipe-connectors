@@ -1,7 +1,8 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.9
 Date: ????
-  Changes:
+  Bugfixes:
+    - Underground dragging immediately placed unnecessary underground after pipe placement
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.8
 Date: 2025-05-31
