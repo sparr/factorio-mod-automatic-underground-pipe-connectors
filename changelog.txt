@@ -3,6 +3,7 @@ Version: 2.0.9
 Date: ????
   Bugfixes:
     - Underground dragging immediately placed unnecessary underground after pipe placement
+    - Ghost undergrounds connected to ghost buildings in the same blueprint
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.8
 Date: 2025-05-31

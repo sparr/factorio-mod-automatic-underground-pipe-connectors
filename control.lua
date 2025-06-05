@@ -6,9 +6,9 @@ local util = require("util")
 ---@type Storage
 storage=storage
 
---- List of underground creation events this tick
+--- List of entity creation events this tick
 ---@type EventData.on_built_entity[]
-local new_underground_events = {}
+local new_entity_events = {}
 
 --- Track the item used for triggering end of tick processing
 ---@type integer
@@ -54,6 +54,11 @@ local directions_to_neighbors = {
 ---@alias EntityEtc LuaEntity|LuaSurface.create_entity_param.base|LuaSurface.can_place_entity_param|LuaSurface.can_fast_replace_param
 
 ---@param entity LuaEntity
+local function entity_type_or_ghost_type(entity)
+    return entity.type == "entity-ghost" and entity.ghost_type or entity.type
+end
+
+---@param entity LuaEntity
 ---@param position MapPosition
 ---@return boolean place
 local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position)
@@ -74,22 +79,26 @@ end
 ---@param event EventData.on_built_entity
 local function on_built_entity(event)
     if processing_entities then return end
-    if #new_underground_events == 0 then
+    if not event.entity.fluidbox then return end
+    if #new_entity_events == 0 then
         -- thanks to boskid, justarandomgeek, PennyJim, Osmo, Quezler, lukā for this trick to postpone processing to the end of the tick
         temp_object = rendering.draw_line{surface=game.players[event.player_index].surface,color={0,0,0},width=0,from={0,0},to={0,0}}
         temp_item_reg_num = script.register_on_object_destroyed(temp_object)
         temp_object.destroy()
     end
-    new_underground_events[#new_underground_events+1] = event
+    new_entity_events[#new_entity_events+1] = event
 end
 
 ---@param event EventData.on_built_entity
----@param new_undergrounds table<integer, boolean>
-local function process_built_entity(event, new_undergrounds)
+---@param new_entities table<integer, boolean>
+local function process_built_entity(event, new_entities)
     local built_underground_entity = event.entity
 
     if not built_underground_entity then return end
     if not built_underground_entity.valid then return end
+    -- we track new underground pipes and new entities with fluidboxes
+    -- but only want to process new underground pipes
+    if entity_type_or_ghost_type(built_underground_entity) ~= "pipe-to-ground" then return end
 
     local underground_entity_name --[[@type string]]
 
@@ -139,7 +148,7 @@ local function process_built_entity(event, new_undergrounds)
         -- first, check for a matching underground pipe
         local neighbor_entity = underground_surface.find_entity( underground_entity_name, candidate_pos )
         if neighbor_entity and neighbor_entity.name == underground_entity_name and neighbor_entity.direction == neighbor_candidate.dir then
-            if not new_undergrounds[neighbor_entity.unit_number] then
+            if not new_entities[neighbor_entity.unit_number] then
                 place = true
             end
         end
@@ -147,7 +156,7 @@ local function process_built_entity(event, new_undergrounds)
             -- check for a matching underground pipe ghost
             local neighbor_ghost = underground_surface.find_entity( "entity-ghost", candidate_pos )
             if neighbor_ghost and neighbor_ghost.ghost_name == underground_entity_name and neighbor_ghost.direction == neighbor_candidate.dir then
-                if not new_undergrounds[neighbor_ghost.unit_number] then
+                if not new_entities[neighbor_ghost.unit_number] then
                     place = true
                     placing_ghost = true
                 end
@@ -157,6 +166,9 @@ local function process_built_entity(event, new_undergrounds)
             -- check for a matching non-pipe entity with a fluidbox connection
             local neighbor_entities = underground_surface.find_entities( { candidate_pos, candidate_pos } )
             for _,entity in pairs(neighbor_entities) do
+                if new_entities[entity.unit_number] then
+                    goto continue_neighbor_entities
+                end
                 if entity.type == "fluid-wagon" or (entity.type == "entity-ghost" and entity.ghost_type == "fluid-wagon") then
                     -- these have fluidbox connections for pumps, but not for pipes
                     goto continue_neighbor_entities
@@ -278,16 +290,16 @@ end
 local function on_object_destroyed(event)
     if event.registration_number == temp_item_reg_num then
         processing_entities = true
-        local new_undergrounds = {}
-        for i,e in pairs(new_underground_events) do
+        local new_entities = {}
+        for i,e in pairs(new_entity_events) do
             if e.entity and e.entity.valid then
-                new_undergrounds[e.entity.unit_number] = true
+                new_entities[e.entity.unit_number] = true
             end
         end
-        for i,e in pairs(new_underground_events) do
-            process_built_entity(e, new_undergrounds)
+        for i,e in pairs(new_entity_events) do
+            process_built_entity(e, new_entities)
         end
-        new_underground_events = {}
+        new_entity_events = {}
         processing_entities = false
     end
 end
@@ -366,5 +378,5 @@ remote.add_interface("automatic-underground-pipe-connectors", {
     end,
 })
 
-script.on_event(defines.events.on_built_entity, on_built_entity, {{filter="type",type="pipe-to-ground"},{filter="ghost_type",type="pipe-to-ground"}})
+script.on_event( defines.events.on_built_entity, on_built_entity )
 script.on_event(defines.events.on_object_destroyed, on_object_destroyed)
