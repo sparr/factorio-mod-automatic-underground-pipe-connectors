@@ -225,7 +225,7 @@ local function process_built_entity(event, new_entities)
             -- re-place the underground, to fix dragging functionality that would otherwise be broken by the pipe placement
             event.entity.destroy()
             player.cursor_stack.swap_stack( underground_stack )
-            player.build_from_cursor{ position = underground_position, direction = underground_direction, build_mode = build_mode }
+            player.build_from_cursor{ position = underground_position, direction = underground_direction, build_mode = (built_underground_entity.type == "entity-ghost" and defines.build_mode.forced or defines.build_mode.normal)}
             -- TODO simplify undoing the stack swaps
             player.cursor_stack.swap_stack( underground_stack )
             player.cursor_stack.swap_stack(pipe_stack)
