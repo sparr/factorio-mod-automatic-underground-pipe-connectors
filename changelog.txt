@@ -3,6 +3,7 @@ Version: 2.0.10
 Date: ????
   Bugfixes:
     - Underground was re-placed as ghost when pipe missing from inventory
+    - Error on placement of non-unit entity
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.9
 Date: 2025-06-06

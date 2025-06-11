@@ -292,7 +292,7 @@ local function on_object_destroyed(event)
         processing_entities = true
         local new_entities = {}
         for i,e in pairs(new_entity_events) do
-            if e.entity and e.entity.valid then
+            if e.entity and e.entity.valid and e.entity.unit_number then
                 new_entities[e.entity.unit_number] = true
             end
         end
