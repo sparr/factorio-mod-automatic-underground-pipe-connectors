@@ -51,9 +51,8 @@ end
 ---@param position MapPosition
 ---@return boolean place
 local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position)
-    local fluidbox = entity.fluidbox
-    for i = 1, #fluidbox do
-        for _, pipe_connection in pairs( fluidbox.get_pipe_connections(i) ) do
+    for i = 1, entity.fluids_count do
+        for _, pipe_connection in pairs( entity.get_fluid_box_pipe_connections(i) ) do
             -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
             if position[1] == math.floor( ( pipe_connection.target_position.x + 0.25 ) * 2 ) / 2 and
                position[2] == math.floor( ( pipe_connection.target_position.y + 0.25 ) * 2 ) / 2 then
@@ -214,8 +213,7 @@ local function on_built_entity(event)
                 end
                 if  ( entity_type ~= "pipe" and entity_type ~= "pipe-to-ground"
                     ) and (
-                        neighbor_entity.fluidbox and
-                        #neighbor_entity.fluidbox > 0
+                        neighbor_entity.fluids_count > 0
                     )
                 then
                     if should_place_based_on_neighbor_fluidbox_prototypes(neighbor_entity, pipe_position) then
