@@ -237,17 +237,12 @@ local function on_built_entity(event)
             local neighbor_entities = underground_surface.find_entities( { candidate_pos, candidate_pos } )
             for _,neighbor_entity in pairs(neighbor_entities) do
                 local entity_type = entity_type_or_ghost_type(neighbor_entity)
-                if entity_type == "fluid-wagon" then
-                    -- these have fluidbox connections for pumps, but not for pipes
-                    goto continue_neighbor_entities
-                end
                 if entity_type ~= "pipe" and entity_type ~= "pipe-to-ground" then
                     if should_place_based_on_neighbor_fluidbox_prototypes(neighbor_entity, pipe_position) then
                         place = true
                         goto bail_neighbor_entities
                     end
                 end
-                ::continue_neighbor_entities::
             end
         end
         ::bail_neighbor_entities::
