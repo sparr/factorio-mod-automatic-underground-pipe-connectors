@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 2.0.12
+Date: 2026-07-12
+  Changes:
+    - Updated for Factorio 2.1
+    - Consider both real and ghost entities when looking for fluid connections
+  Compatibility:
+    - Migrated neighbor fluidbox checks to the 2.1 prototype API
+    - Declared base >= 2.1 dependency
+---------------------------------------------------------------------------------------------------
 Version: 2.0.11
 Date: 2025-06-11
   Changes:
