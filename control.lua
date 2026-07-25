@@ -57,10 +57,49 @@ local function get_fluidbox_prototype(entity)
     return entity.prototype
 end
 
+--- Collect the set of pipe-connection categories a pipe entity exposes.
+--- Two fluidboxes only connect when their connection_category arrays intersect
+--- (default is {"default"}), so this lets us reject connections that would be
+--- geometrically aligned but categorically incompatible (e.g. tiered-fluid mods).
+---@param pipe_entity_name string
+---@return table<string, true> categories
+local function pipe_connection_categories(pipe_entity_name)
+    local categories = {}
+    local fluidbox_prototypes = prototypes.entity[pipe_entity_name].fluidbox_prototypes
+    if not fluidbox_prototypes then return categories end
+    for i = 1, #fluidbox_prototypes do
+        local pipe_connections = fluidbox_prototypes[i].pipe_connections
+        for j = 1, #pipe_connections do
+            local connection_categories = pipe_connections[j].connection_category
+            if connection_categories then
+                for k = 1, #connection_categories do
+                    categories[connection_categories[k]] = true
+                end
+            end
+        end
+    end
+    return categories
+end
+
+--- Whether the pipe we would place can actually connect to a neighbor connection,
+--- based on connection categories. Permissive when either side is unknown so we
+--- never regress the geometry-only behavior for entities without categories.
+---@param pipe_categories table<string, true>
+---@param neighbor_categories string[]?
+---@return boolean
+local function connection_categories_intersect(pipe_categories, neighbor_categories)
+    if not neighbor_categories or not next(pipe_categories) then return true end
+    for i = 1, #neighbor_categories do
+        if pipe_categories[neighbor_categories[i]] then return true end
+    end
+    return false
+end
+
 ---@param entity LuaEntity
 ---@param position MapPosition
+---@param pipe_categories table<string, true> connection categories of the pipe that would be placed
 ---@return boolean place
-local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position)
+local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position, pipe_categories)
     -- Work from the prototype's fluidbox connections rather than the live fluidbox
     -- so that ghost entities (which have no live fluidbox) are considered too.
     local fluidbox_prototypes = get_fluidbox_prototype(entity).fluidbox_prototypes
@@ -86,7 +125,11 @@ local function should_place_based_on_neighbor_fluidbox_prototypes(entity, positi
             -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
             if position[1] == math.floor((entity.position.x + x + dir_vec[1] + 0.25) * 2) / 2 and
                 position[2] == math.floor((entity.position.y + y + dir_vec[2] + 0.25) * 2) / 2 then
-                return true
+                -- geometry matches; only connect if the categories are compatible so we
+                -- don't place a pipe that can't actually join (e.g. cross-tier fluid mods)
+                if connection_categories_intersect(pipe_categories, pipe_connection.connection_category) then
+                    return true
+                end
             end
         end
     end
@@ -215,6 +258,9 @@ local function on_built_entity(event)
         end
     end
 
+    -- categories of the pipe we would place, used to reject incompatible (e.g. cross-tier) connections
+    local pipe_categories = pipe_connection_categories(pipe_entity_name)
+
     -- look at the three possible locations for another underground or entity to connect
     for _, neighbor_candidate in pairs(neighbors_directions) do
         local candidate_pos = {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
@@ -238,7 +284,7 @@ local function on_built_entity(event)
             for _,neighbor_entity in pairs(neighbor_entities) do
                 local entity_type = entity_type_or_ghost_type(neighbor_entity)
                 if entity_type ~= "pipe" and entity_type ~= "pipe-to-ground" then
-                    if should_place_based_on_neighbor_fluidbox_prototypes(neighbor_entity, pipe_position) then
+                    if should_place_based_on_neighbor_fluidbox_prototypes(neighbor_entity, pipe_position, pipe_categories) then
                         place = true
                         goto bail_neighbor_entities
                     end

@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 2.1.1
+Date: 2026-07-12
+  Bugfixes:
+    - Respect fluidbox connection categories so a connecting pipe is only auto-placed when it can
+      actually connect; fixes spurious placements with tiered-fluid mods (e.g. Pyanodons braided
+      pipes via Advanced Fluid Handling) where mismatched tiers cannot join
+---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-07-12
   Changes:
