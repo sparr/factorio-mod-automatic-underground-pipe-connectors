@@ -47,16 +47,45 @@ local function entity_type_or_ghost_type(entity)
     return entity.type == "entity-ghost" and entity.ghost_type or entity.type
 end
 
+--- Get the entity prototype that has fluidbox info, handling entity-ghost.
+---@param entity LuaEntity
+---@return LuaEntityPrototype?
+local function get_fluidbox_prototype(entity)
+    if entity.type == "entity-ghost" then
+        return entity.ghost_prototype
+    end
+    return entity.prototype
+end
+
 ---@param entity LuaEntity
 ---@param position MapPosition
 ---@return boolean place
 local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position)
-    local fluidbox = entity.fluidbox
-    for i = 1, #fluidbox do
-        for _, pipe_connection in pairs( fluidbox.get_pipe_connections(i) ) do
+    -- Work from the prototype's fluidbox connections rather than the live fluidbox
+    -- so that ghost entities (which have no live fluidbox) are considered too.
+    local fluidbox_prototypes = get_fluidbox_prototype(entity).fluidbox_prototypes
+    if not fluidbox_prototypes then return false end
+    for i = 1, #fluidbox_prototypes do
+        local pipe_connections = fluidbox_prototypes[i].pipe_connections
+        for j = 1, #pipe_connections do
+            local pipe_connection = pipe_connections[j]
+            local local_pos = pipe_connection.positions[1]
+            local x = local_pos.x
+            local y = local_pos.y
+            local d = pipe_connection.direction
+            -- mirror first, then rotate
+            if entity.mirroring then
+                x = -x
+                d = (16 - d) % 16
+            end
+            for _ = 1, entity.direction / 4 do
+                x, y = -y, x
+                d = (d + 4) % 16
+            end
+            local dir_vec = util.direction_vectors[d]
             -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
-            if position[1] == math.floor( ( pipe_connection.target_position.x + 0.25 ) * 2 ) / 2 and
-               position[2] == math.floor( ( pipe_connection.target_position.y + 0.25 ) * 2 ) / 2 then
+            if position[1] == math.floor((entity.position.x + x + dir_vec[1] + 0.25) * 2) / 2 and
+                position[2] == math.floor((entity.position.y + y + dir_vec[2] + 0.25) * 2) / 2 then
                 return true
             end
         end
@@ -204,26 +233,16 @@ local function on_built_entity(event)
             end
         end
         if not place then
-            -- check for a matching non-pipe entity with a fluidbox connection
+            -- check for a matching non-pipe entity (real or ghost) with a fluidbox connection
             local neighbor_entities = underground_surface.find_entities( { candidate_pos, candidate_pos } )
             for _,neighbor_entity in pairs(neighbor_entities) do
                 local entity_type = entity_type_or_ghost_type(neighbor_entity)
-                if entity_type == "fluid-wagon" then
-                    -- these have fluidbox connections for pumps, but not for pipes
-                    goto continue_neighbor_entities
-                end
-                if  ( entity_type ~= "pipe" and entity_type ~= "pipe-to-ground"
-                    ) and (
-                        neighbor_entity.fluidbox and
-                        #neighbor_entity.fluidbox > 0
-                    )
-                then
+                if entity_type ~= "pipe" and entity_type ~= "pipe-to-ground" then
                     if should_place_based_on_neighbor_fluidbox_prototypes(neighbor_entity, pipe_position) then
                         place = true
                         goto bail_neighbor_entities
                     end
                 end
-                ::continue_neighbor_entities::
             end
         end
         ::bail_neighbor_entities::

@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 2.1.0
+Date: 2026-07-12
+  Changes:
+    - Updated for Factorio 2.1
+    - Consider both real and ghost entities when looking for fluid connections
+    - Removed obsolete fluid-wagon connection guard (worked around a Factorio 1.1 issue no longer present in 2.x)
+  Compatibility:
+    - Migrated neighbor fluidbox checks to the 2.1 prototype API
+    - Declared base >= 2.1 dependency
+---------------------------------------------------------------------------------------------------
 Version: 2.0.11
 Date: 2025-06-11
   Changes:
