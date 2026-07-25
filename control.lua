@@ -14,6 +14,36 @@ storage.pipe_lookup = storage.pipe_lookup or {}
 ---@alias PipeLookup table<string, PipeLookupEntry>
 storage.pipe_lookup = storage.pipe_lookup or {}
 
+local tentative_pipe_ghost_tag = "automatic-underground-pipe-connectors-tentative"
+
+---@class (exact) PendingPipeGhost
+---@field tick MapTick
+---@field surface_index uint32
+---@field position MapPosition
+---@field inner_name string
+---@field direction defines.direction
+---@field force LuaForce
+---@field quality string
+---@field tags Tags?
+
+---@type table<uint, PendingPipeGhost>
+local pending_pipe_ghosts = {}
+
+--- Marks players whose next pipe-to-ground must be rotated back after creation (while dragging)
+---@type table<uint, boolean>
+local rotate_next_dragged_pipetoground = {}
+
+---@class (exact) PendingDraggedPipetogroundRotation
+---@field tick MapTick
+---@field surface_index uint32
+---@field position MapPosition
+---@field direction defines.direction
+---@field entity_name string
+
+--- Stores the corrected direction and position for a pipe-to-ground that must be corrected after creation.
+---@type table<uint, PendingDraggedPipetogroundRotation>
+local pending_dragged_pipetoground_rotations = {}
+
 ---Map from underground pipe direction to the locations and directions of neighbors it might connect to by adding a single pipe
 ---@type { [defines.direction]: { pos: Vector, dir: defines.direction }[] }
 local directions_to_neighbors = {
@@ -49,10 +79,10 @@ end
 
 --- Get the entity prototype that has fluidbox info, handling entity-ghost.
 ---@param entity LuaEntity
----@return LuaEntityPrototype?
+---@return LuaEntityPrototype
 local function get_fluidbox_prototype(entity)
     if entity.type == "entity-ghost" then
-        return entity.ghost_prototype
+        return entity.ghost_prototype --[[@as LuaEntityPrototype]]
     end
     return entity.prototype
 end
@@ -95,6 +125,8 @@ local function connection_categories_intersect(pipe_categories, neighbor_categor
     return false
 end
 
+--- Check whether an entity has a compatible fluid connection facing the connector position.
+--- Prototype data is used so entity ghosts can be checked even though they have no runtime fluidbox.
 ---@param entity LuaEntity
 ---@param position MapPosition
 ---@param pipe_categories table<string, true> connection categories of the pipe that would be placed
@@ -108,18 +140,18 @@ local function should_place_based_on_neighbor_fluidbox_prototypes(entity, positi
         local pipe_connections = fluidbox_prototypes[i].pipe_connections
         for j = 1, #pipe_connections do
             local pipe_connection = pipe_connections[j]
-            local local_pos = pipe_connection.positions[1]
+            local local_pos = pipe_connection.positions[1]--[[@as MapPosition]]
             local x = local_pos.x
             local y = local_pos.y
             local d = pipe_connection.direction
             -- mirror first, then rotate
             if entity.mirroring then
                 x = -x
-                d = (16 - d) % 16
+                d = ((16 - d) % 16) --[[@as defines.direction]]
             end
             for _ = 1, entity.direction / 4 do
                 x, y = -y, x
-                d = (d + 4) % 16
+                d = ((d + 4) % 16) --[[@as defines.direction]]
             end
             local dir_vec = util.direction_vectors[d]
             -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
@@ -136,8 +168,171 @@ local function should_place_based_on_neighbor_fluidbox_prototypes(entity, positi
     return false
 end
 
+--- Whether a real/ghost entity currently exposes a "valid" fluid connection at the
+--- position where the connector pipe would be placed. Prototype-only matches,
+--- such as an assembling machine without a recipe, are tentative.
+---@param entity LuaEntity
+---@param position MapPosition
+---@return boolean
+local function has_active_fluidbox_connection(entity, position)
+    for fluidbox_index = 1, entity.fluids_count do
+        local pipe_connections = entity.get_fluid_box_pipe_connections(fluidbox_index)
+        if pipe_connections then
+            for _, pipe_connection in pairs(pipe_connections) do
+                local target_position = pipe_connection.target_position
+                if target_position and
+                    math.abs(target_position.x - position[1]) < 0.001 and
+                    math.abs(target_position.y - position[2]) < 0.001 then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+--- Record the information needed to preserve a pipe ghost and correct drag direction afterward.
+---@param event EventData.on_pre_build
+local function on_pre_build(event)
+    pending_pipe_ghosts[event.player_index] = nil
+    pending_dragged_pipetoground_rotations[event.player_index] = nil
+
+    -- Read and clear the pending direction correction. It applies only to this next
+    -- build attempt, so stopping the drag cannot affect a later, unrelated placement.
+    local rotate_this_dragged_pipetoground = rotate_next_dragged_pipetoground[event.player_index]
+    rotate_next_dragged_pipetoground[event.player_index] = nil
+
+    if not event.created_by_moving then return end
+
+    local player = game.get_player(event.player_index)
+    if not player then return end
+    local cursor_stack = player.cursor_stack
+    if not cursor_stack or not cursor_stack.valid_for_read then return end
+    local place_result = cursor_stack.prototype.place_result
+    if not place_result or place_result.type ~= "pipe-to-ground" then return end
+
+    if rotate_this_dragged_pipetoground then
+        -- Restoring the previous pipe ghost makes Factorio continue the drag with the
+        -- wrong pipe-to-ground direction. The cursor direction cannot be changed through
+        -- the API, so store the expected result and rotate the entity after creation.
+        pending_dragged_pipetoground_rotations[event.player_index] = {
+            tick = event.tick,
+            surface_index = player.surface.index,
+            position = {
+                x = event.position.x,
+                y = event.position.y,
+            } --[[@as MapPosition]],
+            direction = ((event.direction + 8) % 16)--[[@as defines.direction]], -- change direction by 180°
+            entity_name = place_result.name,
+        }
+    end
+
+    local pipe_ghost = player.surface.find_entity("entity-ghost", event.position)
+    if not pipe_ghost or pipe_ghost.ghost_type ~= "pipe" then return end
+    local tags = pipe_ghost.tags
+    if tags and tags[tentative_pipe_ghost_tag] then return end
+
+    pending_pipe_ghosts[event.player_index] = {
+        tick = event.tick,
+        surface_index = pipe_ghost.surface.index,
+        position = {
+            x = pipe_ghost.position.x,
+            y = pipe_ghost.position.y,
+        } --[[@as MapPosition]],
+        inner_name = pipe_ghost.ghost_name,
+        direction = pipe_ghost.direction,
+        force = pipe_ghost.force --[[@as LuaForce]],
+        quality = pipe_ghost.quality.name,
+        tags = tags,
+    }
+end
+
+--- Restore a pipe ghost that was replaced by a pipe-to-ground during dragging.
+---@param event EventData.on_built_entity
+---@return boolean restored Whether the newly built entity was removed to restore the pipe ghost.
+local function restore_pipe_ghost_after_drag(event)
+    local pending = pending_pipe_ghosts[event.player_index]
+    pending_pipe_ghosts[event.player_index] = nil
+    if not pending or pending.tick ~= event.tick then return false end
+
+    local entity = event.entity
+    if not entity or not entity.valid or entity.type ~= "pipe-to-ground" then return false end
+    if entity.surface.index ~= pending.surface_index or
+        entity.position.x ~= pending.position.x or
+        entity.position.y ~= pending.position.y then
+        return false
+    end
+
+    local player = game.get_player(event.player_index)
+    if not player then return false end
+    local surface = entity.surface
+    if not player.mine_entity(entity, true) then return false end
+
+    local pipe_ghost = surface.create_entity({
+        name = "entity-ghost",
+        inner_name = pending.inner_name,
+        position = pending.position,
+        direction = pending.direction,
+        force = pending.force,
+        quality = pending.quality,
+        player = event.player_index,
+        raise_built = true,
+        create_build_effect_smoke = true,
+    })
+    if not pipe_ghost or not pipe_ghost.valid then return true end
+
+    if pending.tags then
+        pipe_ghost.tags = pending.tags
+    end
+
+    -- Mining the just-built pipe-to-ground makes Factorio continue the drag with the
+    -- next pipe-to-ground facing the wrong way. Mark that next entity for rotation back.
+    rotate_next_dragged_pipetoground[event.player_index] = true
+
+    player.create_local_flying_text({
+        text = {"message.automatic-underground-pipe-connectors-pipe-ghost-preserved"},
+        position = pending.position,
+        surface = surface,
+        color = {r = 1, g = 0.65, b = 0.2},
+            time_to_live = 90,
+    })
+
+
+    return true
+end
+
+--- Apply the scheduled direction correction to the exact pipe-to-ground created by this drag step.
+---@param event EventData.on_built_entity
+local function rotate_dragged_pipetoground(event)
+    local pending = pending_dragged_pipetoground_rotations[event.player_index]
+    pending_dragged_pipetoground_rotations[event.player_index] = nil
+    if not pending or pending.tick ~= event.tick then return end
+
+    local entity = event.entity
+    -- Only rotate the real pipe-to-ground recorded during on_pre_build. Ghosts and
+    -- unrelated entities must keep their original direction.
+    if not entity or not entity.valid or entity.type ~= "pipe-to-ground" then return end
+    if entity.name ~= pending.entity_name or
+        entity.surface.index ~= pending.surface_index or
+        entity.position.x ~= pending.position.x or
+        entity.position.y ~= pending.position.y then
+        return
+    end
+
+    entity.direction = pending.direction
+end
+
+--- Preserve pipe ghosts, correct dragged pipe-to-ground directions, and place connector pipes.
 ---@param event EventData.on_built_entity
 local function on_built_entity(event)
+    if restore_pipe_ghost_after_drag(event) then
+        -- The pipe-to-ground was removed while restoring the pipe ghost, so there is
+        -- no entity left to rotate. The restoration already marks the next drag step.
+        pending_dragged_pipetoground_rotations[event.player_index] = nil
+        return
+    end
+    rotate_dragged_pipetoground(event)
+
     local entity = event.entity
     if not entity then return end
     if not entity.valid then return end
@@ -166,7 +361,7 @@ local function on_built_entity(event)
     local pipe_position = {
         underground_position.x + pipe_position_delta[1],
         underground_position.y + pipe_position_delta[2]
-    }
+    }--[[@as MapPosition]]
     local player = game.players[event.player_index]
     local inventory = player.get_main_inventory()
     local pipe_stack --[[@type LuaItemStack?]]
@@ -263,8 +458,9 @@ local function on_built_entity(event)
 
     -- look at the three possible locations for another underground or entity to connect
     for _, neighbor_candidate in pairs(neighbors_directions) do
-        local candidate_pos = {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}
+        local candidate_pos = {underground_position.x + neighbor_candidate.pos[1], underground_position.y + neighbor_candidate.pos[2]}--[[@as MapPosition]]
         local place = false
+        local tentative = false
         -- first, check for a matching underground pipe
         local neighbor_entity = underground_surface.find_entity( underground_entity_name, candidate_pos )
         if neighbor_entity and neighbor_entity.name == underground_entity_name and neighbor_entity.direction == neighbor_candidate.dir then
@@ -275,7 +471,6 @@ local function on_built_entity(event)
             local neighbor_ghost = underground_surface.find_entity( "entity-ghost", candidate_pos )
             if neighbor_ghost and neighbor_ghost.ghost_name == underground_entity_name and neighbor_ghost.direction == neighbor_candidate.dir then
                 place = true
-                placing_ghost = true
             end
         end
         if not place then
@@ -286,6 +481,7 @@ local function on_built_entity(event)
                 if entity_type ~= "pipe" and entity_type ~= "pipe-to-ground" then
                     if should_place_based_on_neighbor_fluidbox_prototypes(neighbor_entity, pipe_position, pipe_categories) then
                         place = true
+                        tentative = not has_active_fluidbox_connection(neighbor_entity, pipe_position)
                         goto bail_neighbor_entities
                     end
                 end
@@ -294,8 +490,8 @@ local function on_built_entity(event)
         ::bail_neighbor_entities::
         if place then
             -- found something to connect to!
-            if not placing_ghost then
-                -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
+            -- Consume an item according to the entity definition that will actually be created. This also covers real pipes replacing matching pipe ghosts.
+            if pipe_entity_definition.name ~= "entity-ghost" then
                 if inventory then
                     inventory.remove({name=pipe_item_name})
                 else
@@ -308,7 +504,12 @@ local function on_built_entity(event)
             end
             if not tile_failed then
                 -- place the pipe or ghost entity
-                underground_surface.create_entity(pipe_entity_definition --[[@as LuaSurface.create_entity_param]])
+                local pipe_entity = underground_surface.create_entity(pipe_entity_definition --[[@as LuaSurface.create_entity_param]])
+                if pipe_entity and pipe_entity.type == "entity-ghost" and tentative then
+                    local tags = pipe_entity.tags or {}
+                    tags[tentative_pipe_ghost_tag] = true
+                    pipe_entity.tags = tags
+                end
             end
             -- no need to check other potential neighbors
             break
@@ -425,4 +626,5 @@ remote.add_interface("automatic-underground-pipe-connectors", {
     end,
 })
 
+script.on_event(defines.events.on_pre_build, on_pre_build)
 script.on_event( defines.events.on_built_entity, on_built_entity, {{filter="type",type="pipe-to-ground"},{filter="ghost_type",type="pipe-to-ground"}})
