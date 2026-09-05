@@ -2,6 +2,8 @@
 Version: 2.0.14
 Date: ????
   Changes:
+    - Move the tile, cover, undo and neighbor logic into lib/ modules
+    - Add unit tests, and integration tests that drive a real Factorio
   Bugfixes:
     - Connectors placed in editor mode no longer consume items, since building is free there
 ---------------------------------------------------------------------------------------------------
