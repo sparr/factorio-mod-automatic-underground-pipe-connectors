@@ -5,7 +5,11 @@
   "author": "Sparr",
   "contact": "sparr0@gmail.com",
   "homepage": "https://github.com/sparr/factorio-mod-automatic-underground-pipe-connectors/tree/master/test/integration/aupc-tests",
-  "factorio_version": "2.0",
+  "factorio_version": "2.1",
   "description": "Integration test fixtures for Automatic Underground Pipe Connectors. Published with the mod's source on GitHub, but never to the mod portal.",
-  "dependencies": ["base", "space-age", "automatic-underground-pipe-connectors"]
+  "dependencies": [
+    "base",
+    "space-age",
+    "automatic-underground-pipe-connectors"
+  ]
 }
