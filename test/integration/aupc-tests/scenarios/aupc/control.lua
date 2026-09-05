@@ -646,6 +646,45 @@ local function fixture_fluid_neighbour(entity_name)
     end)
 end
 
+--- The occupancy guard used to refuse on anything sharing the tile. A character
+--- standing on the gap is the case a player actually hits.
+---@param blocker string? entity to stand on the gap, nil for the negative case
+---@param label string
+---@param expect_connector boolean
+local function fixture_gap_occupant(blocker, label, expect_connector)
+    begin(label)
+    step("paint refined concrete and stock pipes and undergrounds", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        world.blocker = nil
+    end)
+    step("put a " .. tostring(blocker) .. " on the gap", function()
+        world.blocker = world.surface.create_entity{
+            name = blocker, position = world.gap, force = world.player.force }
+        check(world.blocker ~= nil, "could not place a " .. tostring(blocker) .. " on the gap")
+    end)
+    step("blueprint a ghost underground at A", function()
+        build_ghost(UNDERGROUND, world.a, defines.direction.south)
+    end)
+    step("build a real underground at B", function()
+        build_real(UNDERGROUND, world.b, defines.direction.north)
+    end)
+    step("check whether a ghost connector appeared", function()
+        local ghost = ghost_at_gap()
+        note("at the gap: " .. tostring(ghost) .. ", blocker still there: " ..
+             tostring(world.blocker ~= nil and world.blocker.valid))
+        if expect_connector then
+            check(ghost == PIPE,
+                "the " .. tostring(blocker) .. " blocked a ghost it should not have, found " ..
+                tostring(ghost))
+        else
+            check(ghost == nil,
+                "a ghost was placed on top of a " .. tostring(blocker) .. ", found " .. tostring(ghost))
+        end
+        if world.blocker and world.blocker.valid then world.blocker.destroy() end
+    end)
+end
+
 --- Freeplay's controller: a real body, a real inventory, and a build reach
 local function fixture_character()
     begin("character controller: pays for the connector out of the character")
@@ -686,12 +725,6 @@ local function fixture_remote()
         -- 2.1 remote view reports no main inventory even with a character, so hold
         -- onto the one we stocked; it is the character's and stays valid
         world.stocked = world.player.get_main_inventory()
-        -- begin() frames the camera on the patch centre, which is the gap tile, and
-        -- the character inherited from the previous fixture rides along and stands
-        -- on it. Move it clear before switching, or the mod sees an occupied gap.
-        if world.player.character then
-            world.player.character.teleport({ x = world.left + 10.5, y = 10.5 }, world.surface)
-        end
         world.player.set_controller{
             type = defines.controllers.remote,
             position = world.b,
@@ -862,6 +895,8 @@ fixture_ghost_neighbour()
 fixture_no_neighbour()
 fixture_fluid_neighbour("pump")
 fixture_fluid_neighbour("storage-tank")
+fixture_gap_occupant("character", "a character on the gap does not block a ghost connector", true)
+fixture_gap_occupant("wooden-chest", "a real entity on the gap does block a ghost connector", false)
 fixture_ocean_ghosts()
 fixture_undo()
 fixture_character()

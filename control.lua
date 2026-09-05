@@ -29,6 +29,27 @@ storage.tile_lookup = storage.tile_lookup or {}
 ---| LuaSurface.can_place_entity_param
 ---| LuaSurface.can_fast_replace_param
 
+--- Entity types that share a tile without stopping a ghost being placed on it.
+--- The build check types the engine offers are no help here: script_ghost ignores
+--- entities altogether, while manual_ghost and blueprint_ghost bring along the rest
+--- of their build rules and refuse placements that plainly do work. So this is a
+--- list, and it errs towards letting the connector through: a character standing on
+--- the gap is the case players hit, and markers and debris never obstruct anything.
+local ghost_transparent_types = {
+    ["character"] = true,
+    ["tile-ghost"] = true,
+    ["item-entity"] = true,
+    ["item-request-proxy"] = true,
+    ["deconstructible-tile-proxy"] = true,
+    ["corpse"] = true,
+    ["rail-remnants"] = true,
+    ["highlight-box"] = true,
+    ["flying-text"] = true,
+    ["smoke"] = true,
+    ["particle-source"] = true,
+    ["resource"] = true,
+}
+
 ---@param event EventData.on_built_entity
 local function on_built_entity(event)
     local entity = event.entity
@@ -236,7 +257,7 @@ local function on_built_entity(event)
         local found_entities = underground_surface.find_entities(
             { pipe_entity_definition.position, pipe_entity_definition.position } )
         for _,found_entity in pairs(found_entities) do
-            if found_entity.type ~= "tile-ghost" then
+            if not ghost_transparent_types[found_entity.type] then
                 -- bail out because there's already something where we'd place a ghost
                 return
             end
