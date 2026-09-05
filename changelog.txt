@@ -2,6 +2,9 @@
 Version: 2.0.12
 Date: ????
   Features:
+    - Cover meltable ground under an automatic connector, with a tile or a ghost
+  Bugfixes:
+    - Connector next to a ghost underground was placed as a real pipe for free
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.11
 Date: 2025-06-11
