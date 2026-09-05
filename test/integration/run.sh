@@ -80,6 +80,15 @@ stop_game() {
         [[ "$pid" == "$$" ]] && continue
         kill -TERM "$pid" 2>/dev/null || true
     done
+
+    # Factorio reports early failures, a held write-data lock among them, through
+    # a zenity dialog. Killing the game orphans that dialog to init, where it sits
+    # on the display indefinitely. Matched on our own env path so it can only ever
+    # be one of ours, and on the process name so a shell quoting it is not a target.
+    for pid in $(pgrep -x zenity 2>/dev/null || true); do
+        tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q -- "$env_dir" || continue
+        kill -TERM "$pid" 2>/dev/null || true
+    done
 }
 trap stop_game EXIT INT TERM
 
