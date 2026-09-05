@@ -15,7 +15,19 @@ factorio="${AUPC_FACTORIO:-/home/sparr/Games/Steam/steamapps/common/Factorio/bin
 results="$env_dir/write-data/script-output/aupc-results.lua"
 sentinel="AUPC-TESTS-COMPLETE"
 deadline="${AUPC_TIMEOUT:-300}"
-display_number="${AUPC_XVFB_DISPLAY:-99}"
+display_number="${AUPC_XVFB_DISPLAY:-121}"
+
+# xvfb-run -n attaches to a display that already exists rather than failing, so a
+# hardcoded number silently shares somebody else's session. The DimensionSync
+# harness next door uses :99, and this one used to as well.
+require_free_display() {
+    if [[ -e "/tmp/.X11-unix/X$1" ]]; then
+        echo "==> display :$1 is already in use by another X server." >&2
+        echo "    Set AUPC_XVFB_DISPLAY to a free number." >&2
+        exit 3
+    fi
+}
+
 
 [[ -x "$factorio" ]] || { echo "no factorio binary at $factorio" >&2; exit 2; }
 
@@ -38,7 +50,8 @@ if [[ -n "${AUPC_DISPLAY:-}" ]]; then
     env DISPLAY="$AUPC_DISPLAY" SDL_AUDIODRIVER=dummy SteamAppId=427520 \
         "$factorio" "${args[@]}" >> "$env_dir/run.out" 2>&1 &
 else
-    echo "==> launching on a private Xvfb display (software GL)"
+    require_free_display "$display_number"
+    echo "==> launching on private display :$display_number (software GL)"
     xvfb-run -n "$display_number" -s "-screen 0 640x480x24" \
         env LIBGL_ALWAYS_SOFTWARE=1 SDL_AUDIODRIVER=dummy SteamAppId=427520 \
         "$factorio" "${args[@]}" >> "$env_dir/run.out" 2>&1 &

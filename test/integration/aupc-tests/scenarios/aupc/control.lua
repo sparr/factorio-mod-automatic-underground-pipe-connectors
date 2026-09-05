@@ -11,6 +11,10 @@ local PATCH = 12
 --- How long a step may wait on synthetic input before giving up, in ticks
 local WAIT_TICKS = 600
 
+-- Written by setup.sh next to this file. Absent means a plain headless run.
+local ok_mode, mode = pcall(require, "mode")
+if not ok_mode or type(mode) ~= "table" then mode = { walkthrough = false } end
+
 local report = { fixtures = {} }
 local steps = {}
 local step_index = 1
@@ -21,7 +25,83 @@ local world = {}
 
 --------------------------------------------------------------------------- plumbing
 
-local function step(fn) steps[#steps + 1] = fn end
+--- @param label string? user-facing description, nil for internal bookkeeping
+local function step(label, fn)
+    local entry = { label = label, fn = fn }
+    steps[#steps + 1] = entry
+    return entry
+end
+
+--------------------------------------------------------------------- walkthrough
+
+local FRAME = "aupc-walkthrough"
+local walk = {
+    waiting = false,    -- a prompt is up and the run is holding for it
+    run_rest = false,   -- finish without stopping again
+    skipping = false,   -- fast forward to the next fixture
+    stopped = false,
+    prompted_for = nil, -- step index the current prompt belongs to
+    last = nil,         -- outcome of the step just run
+}
+
+local function close_prompt()
+    local player = world.player
+    if not player then return end
+    local frame = player.gui.screen[FRAME]
+    if frame and frame.valid then frame.destroy() end
+end
+
+--- @param title string
+--- @param body string
+--- @param with_next boolean whether the run advances on a click or on something else
+local function show_prompt(title, body, with_next)
+    local player = world.player
+    if not player then return end
+    close_prompt()
+    local frame = player.gui.screen.add{
+        type = "frame", name = FRAME, direction = "vertical", caption = title }
+    frame.auto_center = true
+    local text = frame.add{ type = "label", caption = body }
+    text.style.single_line = false
+    text.style.maximal_width = 460
+    text.style.bottom_margin = 8
+    log("AUPC-PROMPT " .. title .. " | " .. body:gsub("\n", " "))
+    local row = frame.add{ type = "flow", direction = "horizontal" }
+    if with_next then
+        row.add{ type = "button", name = "aupc-next", caption = "Next", style = "confirm_button" }
+    end
+    row.add{ type = "button", name = "aupc-skip", caption = "Skip fixture" }
+    row.add{ type = "button", name = "aupc-rest", caption = "Run the rest" }
+    row.add{ type = "button", name = "aupc-stop", caption = "Stop" }
+end
+
+--- Ask the player to press the key themselves, so a watched run never needs
+--- synthetic input aimed at a desktop they are using
+local function prompt_for_undo()
+    show_prompt("Undo", "Press ctrl+z in the game window.\n\n" ..
+        "The run continues as soon as the undo reaches the redo stack.", false)
+end
+
+script.on_event(defines.events.on_gui_click, function(event)
+    local element = event.element
+    if not (element and element.valid) then return end
+    if element.name == "aupc-next" then
+        walk.waiting = false
+    elseif element.name == "aupc-skip" then
+        walk.waiting = false
+        walk.skipping = true
+        if current then current.skipped = true end
+    elseif element.name == "aupc-rest" then
+        walk.waiting = false
+        walk.run_rest = true
+    elseif element.name == "aupc-stop" then
+        walk.waiting = false
+        walk.stopped = true
+    else
+        return
+    end
+    close_prompt()
+end)
 
 --- Context printed alongside a failure, to say what the world looked like
 local function note(message)
@@ -38,7 +118,8 @@ end
 
 --- Claim a patch and start recording against a new fixture
 local function begin(name)
-    step(function()
+    -- marked so "skip fixture" knows where the next one starts
+    step(nil, function()
         current = { name = name, failures = {} }
         report.fixtures[#report.fixtures + 1] = current
         world.patch = world.patch + 1
@@ -58,7 +139,11 @@ local function begin(name)
             if entity.valid and entity.type ~= "character" then entity.destroy() end
         end
         world.surface.destroy_decoratives{ area = area }
-    end)
+
+        if mode.walkthrough and world.player then
+            world.player.teleport({ x = left + 6.5, y = 5.5 }, world.surface)
+        end
+    end).boundary = true
 end
 
 local function paint(tile_name, area)
@@ -149,18 +234,18 @@ end
 --- Two undergrounds one apart on ordinary buildable ground, pipe in inventory
 local function fixture_plain_ground()
     begin("real pair on refined concrete gets a real pipe")
-    step(function()
+    step("paint the patch with refined concrete and stock 10 pipes", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10 }
         check(same_tile(tile_at_gap(), "refined-concrete"),
             "setup: the gap is " .. tile_at_gap() .. ", not refined concrete")
     end)
-    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function()
+    step("build underground A, facing south", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("confirm nothing was placed yet, then build underground B facing north", function()
         check(pipe_at_gap() == nil, "a pipe appeared before the second underground existed")
         build_real(UNDERGROUND, world.b, defines.direction.north)
     end)
-    step(function()
+    step("check a real pipe filled the gap and one pipe was spent", function()
         check(pipe_at_gap() ~= nil, "no pipe was placed in the gap")
         check(ghost_at_gap() == nil, "a ghost was placed instead of a real pipe")
         check(count(PIPE) == 9, "expected one pipe consumed, inventory holds " .. count(PIPE))
@@ -173,21 +258,21 @@ end
 --- The gap is meltable, the player is carrying something that can cover it
 local function fixture_ice_gap_with_cover()
     begin("meltable gap gets a real cover tile when the item is held")
-    step(function()
+    step("paint refined concrete with an ice gap, stock pipes and cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         stock{ [PIPE] = 10, ["refined-concrete"] = 10 }
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
-    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function()
+    step("build underground A, facing south", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("record the ground the mod will see, then build underground B", function()
         -- the state the mod will actually see, captured before it runs
         note("at build time, under A: " .. world.surface.get_tile(world.a.x, world.a.y).name)
         note("at build time, under B: " .. world.surface.get_tile(world.b.x, world.b.y).name)
         note("at build time, gap: " .. tile_at_gap())
         build_real(UNDERGROUND, world.b, defines.direction.north)
     end)
-    step(function()
+    step("check the gap was covered with a real tile and both items were spent", function()
         note("tile under B: " .. world.surface.get_tile(world.b.x, world.b.y).name)
         local override = world.surface.get_default_cover_tile(world.player.force, "ice-rough")
         note("get_default_cover_tile(ice-rough) = " .. tostring(override and override.name))
@@ -217,15 +302,15 @@ end
 --- Same gap, nothing to pay for the cover with
 local function fixture_ice_gap_without_cover()
     begin("meltable gap falls back to ghosts with no cover item")
-    step(function()
+    step("paint refined concrete with an ice gap, stock pipes but no cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         stock{ [PIPE] = 10 }
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
-    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("build underground A, facing south", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("build underground B, facing north", function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check the mod fell back to a pipe ghost over a cover ghost", function()
         check(tile_at_gap() == "ice-rough", "the ground was changed without paying for it")
         check(pipe_at_gap() == nil, "a real pipe was placed on uncovered meltable ground")
         check(ghost_at_gap() == PIPE, "expected a pipe ghost, found " .. tostring(ghost_at_gap()))
@@ -240,13 +325,15 @@ end
 --- A real underground next to a ghost one must not hand out a free pipe
 local function fixture_ghost_neighbour()
     begin("ghost neighbour gets a ghost pipe and costs nothing")
-    step(function()
+    step("paint refined concrete and stock 10 pipes", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10 }
     end)
-    step(function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("blueprint a ghost underground at A",
+        function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
+    step("build a real underground at B, next to the ghost",
+        function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check the connector is a ghost and no pipe was spent", function()
         check(pipe_at_gap() == nil, "a real pipe was placed next to a ghost underground")
         check(ghost_at_gap() == PIPE, "expected a pipe ghost, found " .. tostring(ghost_at_gap()))
         check(count(PIPE) == 10,
@@ -257,12 +344,13 @@ end
 --- One underground on its own should do nothing at all
 local function fixture_no_neighbour()
     begin("a lone underground places nothing")
-    step(function()
+    step("paint refined concrete and stock 10 pipes", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10 }
     end)
-    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("build a single underground at B, with nothing to connect to",
+        function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check nothing at all was placed", function()
         check(pipe_at_gap() == nil, "a pipe was placed with nothing to connect to")
         check(ghost_at_gap() == nil, "a ghost was placed with nothing to connect to")
         check(count(PIPE) == 10, "a pipe was consumed with nothing to connect to")
@@ -273,7 +361,7 @@ end
 --- non-meltable on top of that, so the gap wants two stacked tile ghosts
 local function fixture_ocean_ghosts()
     begin("ocean gap between ice platforms gets stacked cover ghosts")
-    step(function()
+    step("paint ice platform, leaving one tile of ammoniacal ocean in the gap", function()
         -- ice platform everywhere the undergrounds stand, ocean only in the gap.
         -- A blueprint will not put entity ghosts on open water, so the pair needs
         -- ground of its own; the gap is what drives the tile logic either way.
@@ -283,7 +371,7 @@ local function fixture_ocean_ghosts()
         check(tile_at_gap() == "ammoniacal-ocean",
             "setup: the gap is " .. tile_at_gap() .. ", not ocean")
     end)
-    step(function()
+    step("add the cover ghosts the game adds when shift-placing onto ice", function()
         -- An underground collides with the meltable layer, so it cannot be
         -- blueprinted onto bare ice any more than it can be built there. The game
         -- adds a cover ghost itself when a player shift-places; do the same here.
@@ -294,9 +382,11 @@ local function fixture_ocean_ghosts()
             }
         end
     end)
-    step(function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("blueprint a ghost underground at A",
+        function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
+    step("blueprint a ghost underground at B",
+        function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check the gap got a pipe ghost over two stacked cover ghosts", function()
         -- did the two undergrounds we are connecting actually get placed?
         local function describe(position, label)
             local ghost = world.surface.find_entity("entity-ghost", position)
@@ -328,15 +418,15 @@ end
 --- the mod registered actually comes back out.
 local function fixture_undo()
     begin("ctrl+z queues the cover tile for removal with the underground")
-    step(function()
+    step("paint refined concrete with an ice gap, stock pipes and cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         stock{ [PIPE] = 10, ["refined-concrete"] = 10 }
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
-    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("build underground A, facing south", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("build underground B, facing north", function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step("confirm the cover was placed and paid for, then ask for a probe keypress", function()
         -- the state we are about to undo has to be the state we think it is
         check(same_tile(tile_at_gap(), "refined-concrete"),
             "setup: the gap was never covered, it is " .. tile_at_gap())
@@ -357,25 +447,31 @@ local function fixture_undo()
              " (god is " .. tostring(defines.controllers.god) .. ")")
 
         world.player.teleport(world.b, world.surface)
-        log("AUPC-AWAIT-PROBE")
+        if mode.walkthrough then
+            -- a person is pressing the keys, so there is nothing to prove
+            probe_seen = true
+        else
+            log("AUPC-AWAIT-PROBE")
+        end
     end)
-    step(function()
+    step(nil, function()
         -- does any synthetic key reach the game?
         if not probe_seen then return "again" end
     end)
-    step(function()
+    step("ask for ctrl+z", function()
         note("synthetic input reaches the game: " .. tostring(probe_seen))
         -- an undo pushes onto the redo stack, which is a far better signal that
         -- the keypress landed than guessing what the undo will have removed
         world.redo_before = world.player.undo_redo_stack.get_redo_item_count()
-        log("AUPC-AWAIT-UNDO")
+        if mode.walkthrough then prompt_for_undo() else log("AUPC-AWAIT-UNDO") end
     end)
-    step(function()
+    step(nil, function()
         if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
             return "again"
         end
+        close_prompt()
     end)
-    step(function()
+    step("check the cover tile and both entities were queued for removal", function()
         local stack = world.player.undo_redo_stack
         if stack.get_redo_item_count() == world.redo_before then
             current.skipped = true
@@ -426,7 +522,7 @@ end
 --- Freeplay's controller: a real body, a real inventory, and a build reach
 local function fixture_character()
     begin("character controller: pays for the connector out of the character")
-    step(function()
+    step("create a character to control, and stock its inventory", function()
         paint("refined-concrete")
         local character = world.surface.create_entity{
             name = "character", position = { x = world.left + 9.5, y = 5.5 },
@@ -440,13 +536,13 @@ local function fixture_character()
         stock{ [PIPE] = 10 }
         check(count(PIPE) == 10, "the character has no usable main inventory")
     end)
-    step(function()
+    step("build underground A from the character, standing clear of it", function()
         build_real(UNDERGROUND, world.a, defines.direction.south, world.stand)
     end)
-    step(function()
+    step("build underground B from the character", function()
         build_real(UNDERGROUND, world.b, defines.direction.north, world.stand)
     end)
-    step(function()
+    step("check the connector was paid for out of the character", function()
         check(pipe_at_gap() ~= nil, "no connector was placed")
         check(ghost_at_gap() == nil,
             "a ghost was placed instead of a real pipe, " .. tostring(ghost_at_gap()))
@@ -457,7 +553,7 @@ end
 --- Map view: cannot move or change items, can only order ghosts
 local function fixture_remote()
     begin("remote view: connector is a ghost and costs nothing")
-    step(function()
+    step("stock pipes, then switch to remote view", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10 }
         world.player.set_controller{
@@ -472,9 +568,9 @@ local function fixture_remote()
     -- Ordering ghosts is what remote view can actually do. build_from_cursor
     -- ignores the restriction and builds for real, which no player can, so it
     -- would test the API rather than the mod.
-    step(function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("order a ghost underground at A", function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
+    step("order a ghost underground at B", function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check the connector is a ghost and nothing was charged", function()
         note("at the gap: ghost=" .. tostring(ghost_at_gap()) ..
              " real=" .. tostring(pipe_at_gap() ~= nil))
         check(pipe_at_gap() == nil, "a real pipe was built from remote view")
@@ -487,7 +583,7 @@ end
 --- Nothing to pay with is not a reason to place a ghost when nothing is charged
 local function fixture_editor_free()
     begin("editor mode: builds real with an empty inventory")
-    step(function()
+    step("switch to the editor, paint an ice gap, and empty the inventory", function()
         world.player.set_controller{ type = defines.controllers.editor }
         game.tick_paused = false
         world.player.teleport(world.b, world.surface)
@@ -497,9 +593,9 @@ local function fixture_editor_free()
         if inventory then inventory.clear() end
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
-    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("build underground A", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("build underground B", function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check a real pipe and a real cover appeared with nothing to pay", function()
         check(pipe_at_gap() ~= nil, "no connector was placed")
         check(ghost_at_gap() == nil,
             "a ghost was placed for want of an item that costs nothing, " ..
@@ -515,7 +611,7 @@ end
 --- effect on the spot rather than queueing deconstruction for bots.
 local function fixture_editor_undo()
     begin("editor mode: undo reverts the cover tile immediately")
-    step(function()
+    step("switch to the editor and paint an ice gap", function()
         world.player.set_controller{ type = defines.controllers.editor }
         -- the map editor pauses entity updates, which also stops on_tick and would
         -- strand the rest of the run with no report at all
@@ -527,7 +623,7 @@ local function fixture_editor_undo()
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
-    step(function()
+    step("stock pipes and cover tiles", function()
         local inventory = world.player.get_main_inventory()
         if inventory then
             inventory.clear()
@@ -538,9 +634,9 @@ local function fixture_editor_undo()
             note("the editor controller has no main inventory")
         end
     end)
-    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
-    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
-    step(function()
+    step("build underground A", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("build underground B", function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check nothing was charged, then ask for ctrl+z", function()
         check(pipe_at_gap() ~= nil, "no connector was placed in editor mode")
         check(same_tile(tile_at_gap(), "refined-concrete"),
             "the gap was not covered, it is " .. tile_at_gap())
@@ -555,14 +651,15 @@ local function fixture_editor_undo()
                 inventory.get_item_count("refined-concrete") .. " left of 10")
         end
         world.redo_before = world.player.undo_redo_stack.get_redo_item_count()
-        log("AUPC-AWAIT-UNDO")
+        if mode.walkthrough then prompt_for_undo() else log("AUPC-AWAIT-UNDO") end
     end)
-    step(function()
+    step(nil, function()
         if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
             return "again"
         end
+        close_prompt()
     end)
-    step(function()
+    step("check the cover tile reverted and both entities vanished", function()
         if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
             current.skipped = true
             note("no undo arrived, so nothing was checked")
@@ -580,6 +677,7 @@ end
 --------------------------------------------------------------------------- driver
 
 local function prepare(player)
+    log("AUPC-MODE walkthrough=" .. tostring(mode.walkthrough))
     local aquilo = game.planets and game.planets["aquilo"]
     if not aquilo then error("no aquilo planet; is space-age enabled?") end
     local surface = aquilo.surface or aquilo.create_surface()
@@ -600,6 +698,15 @@ end
 local function finish()
     helpers.write_file(RESULTS_FILE, serpent.dump(report))
     log(SENTINEL)
+    if mode.walkthrough then
+        local failures = 0
+        for _, fixture in ipairs(report.fixtures) do
+            if #fixture.failures > 0 then failures = failures + 1 end
+        end
+        show_prompt("Finished",
+            #report.fixtures .. " fixtures, " .. failures .. " failed.\n\n" ..
+            "The game is left running; quit it normally when you are done.", false)
+    end
 end
 
 fixture_plain_ground()
@@ -642,18 +749,58 @@ script.on_event(defines.events.on_tick, function()
         return
     end
 
+    local this_step = steps[step_index]
+
+    if mode.walkthrough then
+        if walk.stopped then
+            finished = true
+            show_prompt("Stopped",
+                "Stopped after " .. #report.fixtures .. " fixtures. The report has been written; " ..
+                "the game is left running.", false)
+            finish()
+            return
+        end
+        if walk.skipping then
+            -- advance without running anything until the next fixture starts
+            if not this_step.boundary then
+                step_index = step_index + 1
+                return
+            end
+            walk.skipping = false
+        end
+        -- steps with no label are bookkeeping or are waiting on something else,
+        -- and a prompt of their own would replace the one already on screen
+        if this_step.label and not walk.run_rest then
+            if walk.prompted_for ~= step_index then
+                walk.prompted_for = step_index
+                walk.waiting = true
+                show_prompt(
+                    current and current.name or "starting up",
+                    (walk.last and ("Last: " .. walk.last .. "\n\n") or "") ..
+                    "Next: " .. this_step.label,
+                    true)
+                return
+            end
+            if walk.waiting then return end
+        end
+    end
+
     if world.running_step ~= step_index then
         world.running_step = step_index
         world.step_started = game.tick
     end
 
-    local this_step = steps[step_index]
-    local ok, err = pcall(this_step)
+    local ok, err = pcall(this_step.fn)
     -- a step that returns "again" is waiting on something outside the game
     if ok and err == "again" and game.tick - world.step_started < WAIT_TICKS then
         return
     end
     step_index = step_index + 1
+    if mode.walkthrough and this_step.label then
+        local failures = current and #current.failures or 0
+        walk.last = this_step.label ..
+            (failures == 0 and " — ok" or (" — " .. failures .. " failure(s) so far"))
+    end
     if not ok then
         local where = current and current.name or "before the first fixture"
         report.error = ("step %d (%s) failed: %s"):format(step_index - 1, where, tostring(err))
