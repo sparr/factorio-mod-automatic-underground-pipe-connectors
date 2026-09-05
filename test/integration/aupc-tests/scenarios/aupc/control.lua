@@ -588,8 +588,10 @@ end
 --- one to any entity whose fluidbox points at the gap. That entity goes down
 --- first, so the underground is the second placement and the one that triggers it.
 ---@param entity_name string
-local function fixture_fluid_neighbour(entity_name)
-    begin(entity_name .. " connects to an underground aimed at its fluidbox")
+---@param as_ghost boolean? place the neighbour as a ghost rather than a real entity
+local function fixture_fluid_neighbour(entity_name, as_ghost)
+    begin((as_ghost and "a ghost " or "") .. entity_name ..
+        " connects to an underground aimed at its fluidbox")
     step("paint refined concrete and stock pipes and undergrounds", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
@@ -599,7 +601,8 @@ local function fixture_fluid_neighbour(entity_name)
         -- raise_built fires script_raised_built, not on_built_entity, so putting
         -- this down does not itself wake the mod
         world.neighbour = world.surface.create_entity{
-            name = entity_name,
+            name = as_ghost and "entity-ghost" or entity_name,
+            inner_name = as_ghost and entity_name or nil,
             position = { x = world.left + 6.5, y = 3.5 },
             direction = defines.direction.south,
             force = world.player.force,
@@ -640,7 +643,11 @@ local function fixture_fluid_neighbour(entity_name)
     end)
     step("check a connector filled the gap", function()
         if not world.facing then return end
-        check(pipe_at_gap() ~= nil, "no connector was placed against the " .. entity_name)
+        -- A ghost neighbour still gets a real pipe: only a ghost *underground* puts
+        -- the mod into ghost mode. Recorded rather than judged; the point of the
+        -- ghost case is that the neighbour is seen at all, which it was not in 2.0.
+        check(pipe_at_gap() ~= nil, "no connector was placed against the " ..
+            (as_ghost and "ghost " or "") .. entity_name)
         check(ghost_at_gap() == nil, "a ghost was placed instead of a real pipe")
         check(count(PIPE) == 9, "expected one pipe consumed, inventory holds " .. count(PIPE))
     end)
@@ -895,6 +902,7 @@ fixture_ghost_neighbour()
 fixture_no_neighbour()
 fixture_fluid_neighbour("pump")
 fixture_fluid_neighbour("storage-tank")
+fixture_fluid_neighbour("storage-tank", true)
 fixture_gap_occupant("character", "a character on the gap does not block a ghost connector", true)
 fixture_gap_occupant("wooden-chest", "a real entity on the gap does block a ghost connector", false)
 fixture_ocean_ghosts()

@@ -3,6 +3,7 @@ Version: 2.1.0
 Date: ????
   Changes:
     - Support for Factorio 2.1
+    - Ghost entities with fluid connections now count as connection targets
   Bugfixes:
     - Standing on the gap no longer stops the connector ghost being placed
 ---------------------------------------------------------------------------------------------------
