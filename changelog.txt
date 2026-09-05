@@ -1,6 +1,6 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.12
-Date: ????
+Date: 2026-09-05
   Features:
     - Cover meltable ground under an automatic connector, with a tile or a ghost
   Bugfixes:
