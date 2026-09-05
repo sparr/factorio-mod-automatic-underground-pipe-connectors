@@ -4,6 +4,7 @@ Date: ????
   Changes:
     - Move the tile, cover, undo and neighbor logic into lib/ modules
     - Add unit tests, and integration tests that drive a real Factorio
+    - Add a walkthrough mode that steps through the integration fixtures in a live game
   Bugfixes:
     - Connectors placed in editor mode no longer consume items, since building is free there
 ---------------------------------------------------------------------------------------------------
