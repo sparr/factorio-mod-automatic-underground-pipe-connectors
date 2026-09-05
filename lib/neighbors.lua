@@ -81,7 +81,6 @@ end
 ---@param underground_entity_name string
 ---@param pipe_position MapPosition
 ---@return boolean place Found something worth connecting to
----@return boolean neighbor_is_ghost What we found is a ghost, so our pipe has to be one too
 local function find_connection_neighbor(
     surface, underground_position, neighbors_directions, underground_entity_name, pipe_position)
     for _, neighbor_candidate in pairs(neighbors_directions) do
@@ -94,14 +93,14 @@ local function find_connection_neighbor(
         if neighbor_entity
         and neighbor_entity.name == underground_entity_name
         and neighbor_entity.direction == neighbor_candidate.dir then
-            return true, false
+            return true
         end
         -- check for a matching underground pipe ghost
         local neighbor_ghost = surface.find_entity( "entity-ghost", candidate_pos )
         if neighbor_ghost
         and neighbor_ghost.ghost_name == underground_entity_name
         and neighbor_ghost.direction == neighbor_candidate.dir then
-            return true, true
+            return true
         end
         -- check for a matching non-pipe entity with a fluidbox connection
         local neighbor_entities = surface.find_entities( { candidate_pos, candidate_pos } )
@@ -115,13 +114,13 @@ local function find_connection_neighbor(
                 ) and fluid_storage_count(candidate_entity) > 0
             then
                 if should_place_based_on_neighbor_fluidbox_prototypes(candidate_entity, pipe_position) then
-                    return true, false
+                    return true
                 end
             end
             ::continue_neighbor_entities::
         end
     end
-    return false, false
+    return false
 end
 
 neighbors.directions_to_neighbors = directions_to_neighbors

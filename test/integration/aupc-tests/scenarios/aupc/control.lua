@@ -379,7 +379,7 @@ end
 
 --- A real underground next to a ghost one must not hand out a free pipe
 local function fixture_ghost_neighbour()
-    begin("ghost neighbour gets a ghost pipe and costs nothing")
+    begin("real underground beside a ghost one gets a real pipe, paid for")
     step("paint refined concrete and stock pipes and undergrounds", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
@@ -388,11 +388,32 @@ local function fixture_ghost_neighbour()
         function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
     step("build a real underground at B, next to the ghost",
         function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
-    step("check the connector is a ghost and no pipe was spent", function()
-        check(pipe_at_gap() == nil, "a real pipe was placed next to a ghost underground")
+    step("check the connector matches the real placement and was paid for", function()
+        -- the neighbour being a ghost is irrelevant; the player placed a real
+        -- underground, so they get a real pipe and are charged for it
+        check(pipe_at_gap() ~= nil, "no connector was placed")
+        check(ghost_at_gap() == nil,
+            "the neighbour's ghostness leaked into the connector, found " ..
+            tostring(ghost_at_gap()))
+        check(count(PIPE) == 9, "expected one pipe consumed, inventory holds " .. count(PIPE))
+    end)
+end
+
+--- The mirror of the case above: the placement is a ghost, so the connector is
+local function fixture_ghost_placement_beside_real()
+    begin("ghost underground beside a real one gets a ghost, free")
+    step("paint refined concrete and stock pipes and undergrounds", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+    end)
+    step("build a real underground at A",
+        function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("blueprint a ghost underground at B",
+        function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check the connector is a ghost and nothing was spent", function()
+        check(pipe_at_gap() == nil, "a real pipe was placed for a ghost placement")
         check(ghost_at_gap() == PIPE, "expected a pipe ghost, found " .. tostring(ghost_at_gap()))
-        check(count(PIPE) == 10,
-            "the pipe was placed for free or charged wrongly, inventory holds " .. count(PIPE))
+        check(count(PIPE) == 10, "a ghost connector was charged for, inventory holds " .. count(PIPE))
     end)
 end
 
@@ -670,11 +691,13 @@ local function fixture_gap_occupant(blocker, label, expect_connector)
             name = blocker, position = world.gap, force = world.player.force }
         check(world.blocker ~= nil, "could not place a " .. tostring(blocker) .. " on the gap")
     end)
+    -- both ghosts, so the placement is a ghost and the occupancy guard is what
+    -- decides. A real placement would go through can_place_entity instead.
     step("blueprint a ghost underground at A", function()
         build_ghost(UNDERGROUND, world.a, defines.direction.south)
     end)
-    step("build a real underground at B", function()
-        build_real(UNDERGROUND, world.b, defines.direction.north)
+    step("blueprint a ghost underground at B", function()
+        build_ghost(UNDERGROUND, world.b, defines.direction.north)
     end)
     step("check whether a ghost connector appeared", function()
         local ghost = ghost_at_gap()
@@ -899,6 +922,7 @@ fixture_plain_ground()
 fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()
 fixture_ghost_neighbour()
+fixture_ghost_placement_beside_real()
 fixture_no_neighbour()
 fixture_fluid_neighbour("pump")
 fixture_fluid_neighbour("storage-tank")

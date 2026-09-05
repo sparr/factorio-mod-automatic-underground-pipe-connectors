@@ -2,6 +2,7 @@
 Version: 2.1.1
 Date: ????
   Changes:
+    - Connectors are a ghost or not based on your own placement, not the neighbour's
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05

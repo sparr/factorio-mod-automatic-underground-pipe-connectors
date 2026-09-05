@@ -53,18 +53,16 @@ end)
 
 describe("find_connection_neighbor", function()
     it("finds nothing in an empty area", function()
-        local found, is_ghost = look{}
+        local found = look{}
         assert.is_false(found)
-        assert.is_false(is_ghost)
     end)
 
     it("finds an underground two ahead facing back", function()
-        local found, is_ghost = look{
+        local found = look{
             { name = UNDERGROUND, type = UNDERGROUND,
               direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
         }
         assert.is_true(found)
-        assert.is_false(is_ghost)
     end)
 
     it("finds an underground around a corner", function()
@@ -83,23 +81,21 @@ describe("find_connection_neighbor", function()
         assert.is_false(found)
     end)
 
-    it("reports a ghost partner as a ghost", function()
-        local found, is_ghost = look{
+    it("finds a ghost partner", function()
+        local found = look{
             { name = "entity-ghost", type = "entity-ghost", ghost_name = UNDERGROUND,
               ghost_type = UNDERGROUND, direction = defines.direction.south,
               position = { x = 10.5, y = 18.5 } },
         }
         assert.is_true(found)
-        assert.is_true(is_ghost)
     end)
 
     it("connects to a non-pipe entity whose fluidbox points at the gap", function()
-        local found, is_ghost = look{
+        local found = look{
             support.fluid_entity({ { { target_position = { x = 10.5, y = 19.5 } } } },
               { name = "storage-tank", type = "storage-tank", position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_true(found)
-        assert.is_false(is_ghost)
     end)
 
     it("skips fluid wagons, whose connections are for pumps", function()

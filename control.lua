@@ -81,18 +81,16 @@ local function on_built_entity(event)
         underground_position.x + pipe_position_delta[1],
         underground_position.y + pipe_position_delta[2]
     }
-    -- decide what we are connecting to before anything reads `placing_ghost`
-    local found_neighbor, neighbor_is_ghost = neighbors.find_connection_neighbor(
+    local found_neighbor = neighbors.find_connection_neighbor(
         underground_surface, underground_position, neighbors_directions,
         underground_entity_name, pipe_position )
     if not found_neighbor then
         -- bail out because there's nothing here worth connecting to
         return
     end
-    if neighbor_is_ghost then
-        -- a ghost neighbor gets a ghost pipe, which costs nothing from inventory
-        placing_ghost = true
-    end
+    -- What the neighbour is does not decide this. The connector matches what the
+    -- player just placed: a ghost underground gets a ghost, a real one gets a real
+    -- pipe they pay for, whether the thing it connects to is built yet or not.
 
     local player = game.players[event.player_index]
     local inventory = player.get_main_inventory()
