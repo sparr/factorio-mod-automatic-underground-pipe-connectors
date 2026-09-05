@@ -2,6 +2,7 @@
 Version: 2.0.13
 Date: ????
   Changes:
+    - Add a luacheck config, with Factorio's globals taken from the FMTK library
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.12
 Date: 2026-09-05
