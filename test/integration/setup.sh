@@ -13,11 +13,23 @@ mods="$env_dir/mods"
 write_data="$env_dir/write-data"
 
 rm -rf "$mods"
-mkdir -p "$mods/automatic-underground-pipe-connectors" "$write_data"
+mkdir -p "$mods" "$write_data"
 
-for entry in info.json control.lua lib changelog.txt thumbnail.png; do
-    [[ -e "$root/$entry" ]] && ln -sfn "$root/$entry" "$mods/automatic-underground-pipe-connectors/$entry"
-done
+# AUPC_FROM_ZIP runs the packaged mod instead of the working tree, which is the
+# only way to find out whether packaging left something out. Everything else
+# about the run is identical.
+if [[ -n "${AUPC_FROM_ZIP:-}" ]]; then
+    [[ -f "$AUPC_FROM_ZIP" ]] || { echo "no zip at $AUPC_FROM_ZIP" >&2; exit 2; }
+    cp "$AUPC_FROM_ZIP" "$mods/"
+    echo "mod under test: $(basename "$AUPC_FROM_ZIP")"
+else
+    mkdir -p "$mods/automatic-underground-pipe-connectors"
+    for entry in info.json control.lua lib changelog.txt thumbnail.png; do
+        [[ -e "$root/$entry" ]] &&
+            ln -sfn "$root/$entry" "$mods/automatic-underground-pipe-connectors/$entry"
+    done
+    echo "mod under test: the working tree"
+fi
 ln -sfn "$here/aupc-tests" "$mods/aupc-tests"
 
 # The scenario cannot read environment variables, so the mode it should run in is
