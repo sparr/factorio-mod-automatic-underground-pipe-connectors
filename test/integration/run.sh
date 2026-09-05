@@ -33,6 +33,12 @@ require_free_display() {
 }
 
 
+# Without a window manager SDL never gives the window mouse focus, so Factorio
+# ignores pointer motion and clicks entirely; keyboard still works because
+# xdotool sets input focus directly. A WM also lets the window fill the screen,
+# which stops tall GUI frames rendering with their top rows cut off.
+window_manager="$(command -v xfwm4 || command -v openbox || command -v marco || true)"
+
 [[ -x "$factorio" ]] || { echo "no factorio binary at $factorio" >&2; exit 2; }
 
 "$here/setup.sh" >/dev/null
@@ -56,9 +62,11 @@ if [[ -n "${AUPC_DISPLAY:-}" ]]; then
 else
     require_free_display "$display_number"
     echo "==> launching on private display :$display_number (software GL)"
-    xvfb-run -n "$display_number" -s "-screen 0 640x480x24" \
+    xvfb-run -n "$display_number" -s "-screen 0 1280x800x24" \
         env LIBGL_ALWAYS_SOFTWARE=1 SDL_AUDIODRIVER=dummy SteamAppId=427520 \
-        "$factorio" "${args[@]}" >> "$env_dir/run.out" 2>&1 &
+            AUPC_WM="$window_manager" \
+        bash -c 'if [[ -n "${AUPC_WM:-}" ]]; then "$AUPC_WM" >/dev/null 2>&1 & sleep 1; fi
+                 exec "$@"' _ "$factorio" "${args[@]}" >> "$env_dir/run.out" 2>&1 &
 fi
 launcher=$!
 
@@ -153,7 +161,8 @@ send_keys() {
     # than a window id; --window would use XSendEvent, which SDL ignores.
     DISPLAY="$target" xdotool windowmap "$window" 2>/dev/null || true
     DISPLAY="$target" xdotool windowraise "$window" 2>/dev/null || true
-    DISPLAY="$target" xdotool windowfocus "$window" 2>/dev/null || true
+    DISPLAY="$target" xdotool windowactivate "$window" 2>/dev/null \
+        || DISPLAY="$target" xdotool windowfocus "$window" 2>/dev/null || true
     # Park the pointer inside the window too: with PointerRoot focus the server
     # delivers to whatever is under the cursor rather than to the focused window.
     DISPLAY="$target" xdotool mousemove --window "$window" 320 240 2>/dev/null || true

@@ -39,6 +39,12 @@ require_free_display() {
 }
 
 
+# Without a window manager SDL never gives the window mouse focus, so Factorio
+# ignores pointer motion and clicks entirely; keyboard still works because
+# xdotool sets input focus directly. A WM also lets the window fill the screen,
+# which stops tall GUI frames rendering with their top rows cut off.
+window_manager="$(command -v xfwm4 || command -v openbox || command -v marco || true)"
+
 [[ -x "$factorio" ]] || { echo "no factorio binary at $factorio" >&2; exit 2; }
 
 AUPC_WALKTHROUGH=true "$here/setup.sh" >/dev/null
@@ -59,7 +65,9 @@ if [[ "$display" == "headless" ]]; then
     echo "==> running unwatched on private display :$xvfb_display"
     xvfb-run -n "$xvfb_display" -s "-screen 0 1280x800x24" \
         env LIBGL_ALWAYS_SOFTWARE=1 SDL_AUDIODRIVER=dummy SteamAppId=427520 \
-        "$factorio" "${args[@]}" >> "$env_dir/run.out" 2>&1 || true
+            AUPC_WM="$window_manager" \
+        bash -c 'if [[ -n "${AUPC_WM:-}" ]]; then "$AUPC_WM" >/dev/null 2>&1 & sleep 1; fi
+                 exec "$@"' _ "$factorio" "${args[@]}" >> "$env_dir/run.out" 2>&1 || true
 else
     echo "==> opening on display $display; it will stop at the first step and wait"
     env DISPLAY="$display" SDL_AUDIODRIVER=dummy SteamAppId=427520 \

@@ -172,7 +172,9 @@ local function begin(name)
         end
         world.surface.destroy_decoratives{ area = area }
 
-        if mode.walkthrough and world.player then
+        -- Frame the patch once per fixture and leave it there. Re-centring on
+        -- every placement made it hard to see what had actually changed.
+        if world.player then
             world.player.teleport({ x = left + 6.5, y = 5.5 }, world.surface)
         end
     end).boundary = true
@@ -212,7 +214,9 @@ end
 --- ever in. Editor and remote have nothing to draw from, and the game charges
 --- nothing in either, so those fall back to a stack from thin air.
 local function build_real(name, position, direction, stand_at)
-    world.player.teleport(stand_at or position, world.surface)
+    -- Only move for a caller that asks: a character has to stand clear of its own
+    -- build site, but moving for every placement drags the camera off the patch.
+    if stand_at then world.player.teleport(stand_at, world.surface) end
     local inventory = world.player.get_main_inventory()
     local stack = inventory and inventory.find_item_stack(name)
     if stack then
@@ -229,8 +233,10 @@ end
 
 --- The API has no shift-click equivalent, so a one-entity blueprint stands in.
 --- It still reaches the mod as a real on_built_entity with a player index.
-local function build_ghost(name, position, direction)
-    world.player.teleport(position, world.surface)
+local function build_ghost(name, position, direction, stand_at)
+    -- remote view builds where it is looking, so that one has to move; everything
+    -- else keeps the camera parked on the patch
+    if stand_at then world.player.teleport(stand_at, world.surface) end
     world.player.cursor_stack.set_stack{ name = "blueprint" }
     world.player.cursor_stack.set_blueprint_entities{
         { entity_number = 1, name = name, position = { 0, 0 }, direction = direction },
@@ -280,7 +286,7 @@ end
 --- Two undergrounds one apart on ordinary buildable ground, pipe in inventory
 local function fixture_plain_ground()
     begin("real pair on refined concrete gets a real pipe")
-    step("paint the patch with refined concrete and stock 10 pipes", function()
+    step("paint the patch with refined concrete and stock pipes and undergrounds", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
         check(same_tile(tile_at_gap(), "refined-concrete"),
@@ -307,7 +313,7 @@ end
 --- The gap is meltable, the player is carrying something that can cover it
 local function fixture_ice_gap_with_cover()
     begin("meltable gap gets a real cover tile when the item is held")
-    step("paint refined concrete with an ice gap, stock pipes and cover tiles", function()
+    step("paint refined concrete with an ice gap, stock pipes, undergrounds and cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = 10 }
@@ -351,7 +357,7 @@ end
 --- Same gap, nothing to pay for the cover with
 local function fixture_ice_gap_without_cover()
     begin("meltable gap falls back to ghosts with no cover item")
-    step("paint refined concrete with an ice gap, stock pipes but no cover tiles", function()
+    step("paint refined concrete with an ice gap, stock pipes and undergrounds but no cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
@@ -374,7 +380,7 @@ end
 --- A real underground next to a ghost one must not hand out a free pipe
 local function fixture_ghost_neighbour()
     begin("ghost neighbour gets a ghost pipe and costs nothing")
-    step("paint refined concrete and stock 10 pipes", function()
+    step("paint refined concrete and stock pipes and undergrounds", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
     end)
@@ -393,7 +399,7 @@ end
 --- One underground on its own should do nothing at all
 local function fixture_no_neighbour()
     begin("a lone underground places nothing")
-    step("paint refined concrete and stock 10 pipes", function()
+    step("paint refined concrete and stock pipes and undergrounds", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
     end)
@@ -467,7 +473,7 @@ end
 --- the mod registered actually comes back out.
 local function fixture_undo()
     begin("ctrl+z queues the cover tile for removal with the underground")
-    step("paint refined concrete with an ice gap, stock pipes and cover tiles", function()
+    step("paint refined concrete with an ice gap, stock pipes, undergrounds and cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = 10 }
@@ -495,7 +501,7 @@ local function fixture_undo()
         note("controller: " .. tostring(world.player.controller_type) ..
              " (god is " .. tostring(defines.controllers.god) .. ")")
 
-        world.player.teleport(world.b, world.surface)
+        world.player.teleport({ x = world.left + 6.5, y = 5.5 }, world.surface)
         if mode.walkthrough then
             -- a person is pressing the keys, so there is nothing to prove
             probe_seen = true
@@ -567,6 +573,79 @@ local function fixture_undo()
     end)
 end
 
+---@param dx integer
+---@param dy integer
+---@return defines.direction?
+local function direction_of(dx, dy)
+    if dx == 0 and dy == -1 then return defines.direction.north end
+    if dx == 1 and dy == 0 then return defines.direction.east end
+    if dx == 0 and dy == 1 then return defines.direction.south end
+    if dx == -1 and dy == 0 then return defines.direction.west end
+    return nil
+end
+
+--- An underground is not the only thing worth connecting to: the mod also joins
+--- one to any entity whose fluidbox points at the gap. That entity goes down
+--- first, so the underground is the second placement and the one that triggers it.
+---@param entity_name string
+local function fixture_fluid_neighbour(entity_name)
+    begin(entity_name .. " connects to an underground aimed at its fluidbox")
+    step("paint refined concrete and stock pipes and undergrounds", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        world.facing = nil
+    end)
+    step("place the " .. entity_name, function()
+        -- raise_built fires script_raised_built, not on_built_entity, so putting
+        -- this down does not itself wake the mod
+        world.neighbour = world.surface.create_entity{
+            name = entity_name,
+            position = { x = world.left + 6.5, y = 3.5 },
+            direction = defines.direction.south,
+            force = world.player.force,
+            raise_built = true,
+        }
+        check(world.neighbour ~= nil, "could not place a " .. entity_name)
+    end)
+    step("aim an underground at one of its fluid connections", function()
+        if not world.neighbour then return end
+        local fluidbox = world.neighbour.fluidbox
+        for index = 1, #fluidbox do
+            for _, connection in pairs(fluidbox.get_pipe_connections(index)) do
+                local target = connection.target_position
+                local dx = target.x - connection.position.x
+                local dy = target.y - connection.position.y
+                dx = dx > 0.25 and 1 or (dx < -0.25 and -1 or 0)
+                dy = dy > 0.25 and 1 or (dy < -0.25 and -1 or 0)
+                -- one tile further along, facing back, so the gap is exactly the target
+                local facing = direction_of(-dx, -dy)
+                local spot = { x = target.x + dx, y = target.y + dy }
+                local clear = #world.surface.find_entities{
+                    { spot.x - 0.4, spot.y - 0.4 }, { spot.x + 0.4, spot.y + 0.4 } } == 0
+                if facing and clear then
+                    world.gap = target
+                    world.b = spot
+                    world.facing = facing
+                    note("connecting at " .. target.x .. "," .. target.y ..
+                         " from an underground at " .. spot.x .. "," .. spot.y)
+                    return
+                end
+            end
+        end
+        check(false, "no reachable fluid connection on the " .. entity_name)
+    end)
+    step("build the underground facing it", function()
+        if not world.facing then return end
+        build_real(UNDERGROUND, world.b, world.facing)
+    end)
+    step("check a connector filled the gap", function()
+        if not world.facing then return end
+        check(pipe_at_gap() ~= nil, "no connector was placed against the " .. entity_name)
+        check(ghost_at_gap() == nil, "a ghost was placed instead of a real pipe")
+        check(count(PIPE) == 9, "expected one pipe consumed, inventory holds " .. count(PIPE))
+    end)
+end
+
 --- Freeplay's controller: a real body, a real inventory, and a build reach
 local function fixture_character()
     begin("character controller: pays for the connector out of the character")
@@ -601,7 +680,7 @@ end
 --- Map view: cannot move or change items, can only order ghosts
 local function fixture_remote()
     begin("remote view: connector is a ghost and costs nothing")
-    step("stock pipes, then switch to remote view", function()
+    step("stock pipes and undergrounds, then switch to remote view", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
         world.player.set_controller{
@@ -616,8 +695,10 @@ local function fixture_remote()
     -- Ordering ghosts is what remote view can actually do. build_from_cursor
     -- ignores the restriction and builds for real, which no player can, so it
     -- would test the API rather than the mod.
-    step("order a ghost underground at A", function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
-    step("order a ghost underground at B", function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
+    step("order a ghost underground at A",
+        function() build_ghost(UNDERGROUND, world.a, defines.direction.south, world.a) end)
+    step("order a ghost underground at B",
+        function() build_ghost(UNDERGROUND, world.b, defines.direction.north, world.b) end)
     step("check the connector is a ghost and nothing was charged", function()
         note("at the gap: ghost=" .. tostring(ghost_at_gap()) ..
              " real=" .. tostring(pipe_at_gap() ~= nil))
@@ -634,7 +715,7 @@ local function fixture_editor_free()
     step("switch to the editor, paint an ice gap, and empty the inventory", function()
         world.player.set_controller{ type = defines.controllers.editor }
         game.tick_paused = false
-        world.player.teleport(world.b, world.surface)
+        world.player.teleport({ x = world.left + 6.5, y = 5.5 }, world.surface)
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         local inventory = world.player.get_main_inventory()
@@ -664,14 +745,14 @@ local function fixture_editor_undo()
         -- the map editor pauses entity updates, which also stops on_tick and would
         -- strand the rest of the run with no report at all
         game.tick_paused = false
-        world.player.teleport(world.b, world.surface)
+        world.player.teleport({ x = world.left + 6.5, y = 5.5 }, world.surface)
         note("controller: " .. tostring(world.player.controller_type) ..
              " (editor is " .. tostring(defines.controllers.editor) .. ")")
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
-    step("stock pipes and cover tiles", function()
+    step("stock pipes, undergrounds and cover tiles", function()
         local inventory = world.player.get_main_inventory()
         if inventory then
             inventory.clear()
@@ -761,6 +842,8 @@ fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()
 fixture_ghost_neighbour()
 fixture_no_neighbour()
+fixture_fluid_neighbour("pump")
+fixture_fluid_neighbour("storage-tank")
 fixture_ocean_ghosts()
 fixture_undo()
 fixture_character()
