@@ -22,4 +22,12 @@ stds.factorio = {
     },
 }
 
+exclude_files = { ".luarocks/**" }
+
 files["control.lua"].std = "lua52+factorio"
+files["lib/*.lua"].std = "lua52+factorio"
+files["test/**/*.lua"] = {
+    std = "lua52+factorio+busted",
+    -- the stubs install the globals the mod only ever reads
+    globals = { "defines", "game", "prototypes", "remote", "script", "storage" },
+}
