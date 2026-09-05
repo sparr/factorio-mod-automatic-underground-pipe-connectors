@@ -29,7 +29,7 @@ end)
 
 describe("should_place_based_on_neighbor_fluidbox_prototypes", function()
     local function entity_connecting_to(x, y)
-        return { fluidbox = support.fluidbox{ { { target_position = { x = x, y = y } } } } }
+        return support.fluid_entity{ { { target_position = { x = x, y = y } } } }
     end
 
     it("matches a connection aimed at the gap", function()
@@ -95,8 +95,8 @@ describe("find_connection_neighbor", function()
 
     it("connects to a non-pipe entity whose fluidbox points at the gap", function()
         local found, is_ghost = look{
-            { name = "storage-tank", type = "storage-tank", position = { x = 10.5, y = 18.5 },
-              fluidbox = support.fluidbox{ { { target_position = { x = 10.5, y = 19.5 } } } } },
+            support.fluid_entity({ { { target_position = { x = 10.5, y = 19.5 } } } },
+              { name = "storage-tank", type = "storage-tank", position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_true(found)
         assert.is_false(is_ghost)
@@ -104,24 +104,24 @@ describe("find_connection_neighbor", function()
 
     it("skips fluid wagons, whose connections are for pumps", function()
         local found = look{
-            { name = "fluid-wagon", type = "fluid-wagon", position = { x = 10.5, y = 18.5 },
-              fluidbox = support.fluidbox{ { { target_position = { x = 10.5, y = 19.5 } } } } },
+            support.fluid_entity({ { { target_position = { x = 10.5, y = 19.5 } } } },
+              { name = "fluid-wagon", type = "fluid-wagon", position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_false(found)
     end)
 
     it("does not treat a stray pipe as a fluidbox neighbour", function()
         local found = look{
-            { name = "pipe", type = "pipe", position = { x = 10.5, y = 18.5 },
-              fluidbox = support.fluidbox{ { { target_position = { x = 10.5, y = 19.5 } } } } },
+            support.fluid_entity({ { { target_position = { x = 10.5, y = 19.5 } } } },
+              { name = "pipe", type = "pipe", position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_false(found)
     end)
 
     it("ignores an entity whose fluidbox points elsewhere", function()
         local found = look{
-            { name = "storage-tank", type = "storage-tank", position = { x = 10.5, y = 18.5 },
-              fluidbox = support.fluidbox{ { { target_position = { x = 10.5, y = 17.5 } } } } },
+            support.fluid_entity({ { { target_position = { x = 10.5, y = 17.5 } } } },
+              { name = "storage-tank", type = "storage-tank", position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_false(found)
     end)

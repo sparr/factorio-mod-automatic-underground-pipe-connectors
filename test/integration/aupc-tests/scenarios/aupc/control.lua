@@ -609,9 +609,9 @@ local function fixture_fluid_neighbour(entity_name)
     end)
     step("aim an underground at one of its fluid connections", function()
         if not world.neighbour then return end
-        local fluidbox = world.neighbour.fluidbox
-        for index = 1, #fluidbox do
-            for _, connection in pairs(fluidbox.get_pipe_connections(index)) do
+        -- 2.1 removed LuaFluidBox; the entity carries the count and the connections
+        for index = 1, world.neighbour.fluids_count do
+            for _, connection in pairs(world.neighbour.get_fluid_box_pipe_connections(index)) do
                 local target = connection.target_position
                 local dx = target.x - connection.position.x
                 local dy = target.y - connection.position.y
@@ -683,6 +683,15 @@ local function fixture_remote()
     step("stock pipes and undergrounds, then switch to remote view", function()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        -- 2.1 remote view reports no main inventory even with a character, so hold
+        -- onto the one we stocked; it is the character's and stays valid
+        world.stocked = world.player.get_main_inventory()
+        -- begin() frames the camera on the patch centre, which is the gap tile, and
+        -- the character inherited from the previous fixture rides along and stands
+        -- on it. Move it clear before switching, or the mod sees an occupied gap.
+        if world.player.character then
+            world.player.character.teleport({ x = world.left + 10.5, y = 10.5 }, world.surface)
+        end
         world.player.set_controller{
             type = defines.controllers.remote,
             position = world.b,
@@ -702,10 +711,19 @@ local function fixture_remote()
     step("check the connector is a ghost and nothing was charged", function()
         note("at the gap: ghost=" .. tostring(ghost_at_gap()) ..
              " real=" .. tostring(pipe_at_gap() ~= nil))
+        for label, position in pairs({ A = world.a, B = world.b }) do
+            local ghost = world.surface.find_entity("entity-ghost", position)
+            note(label .. ": ghost=" .. tostring(ghost and ghost.ghost_name) ..
+                 " real=" .. tostring(world.surface.find_entity(UNDERGROUND, position) ~= nil))
+        end
+        note("physical controller: " .. tostring(world.player.physical_controller_type) ..
+             ", character: " .. tostring(world.player.character ~= nil))
+
         check(pipe_at_gap() == nil, "a real pipe was built from remote view")
         check(ghost_at_gap() == PIPE,
             "expected a ghost connector, found " .. tostring(ghost_at_gap()))
-        check(count(PIPE) == 10, "the mod charged for a ghost, inventory holds " .. count(PIPE))
+        local held = world.stocked and world.stocked.valid and world.stocked.get_item_count(PIPE)
+        check(held == 10, "the mod charged for a ghost, the character holds " .. tostring(held))
     end)
 end
 
@@ -921,6 +939,12 @@ script.on_event(defines.events.on_tick, function()
     end
 
     local ok, err = pcall(this_step.fn)
+    if not ok and current then
+        -- otherwise the fixture that was running when the scenario died is
+        -- reported with no failures at all, which prints as a pass
+        current.failures[#current.failures + 1] =
+            "the run stopped here: " .. tostring(err)
+    end
     -- a step that returns "again" is waiting on something outside the game
     if ok and err == "again" and game.tick - world.step_started < WAIT_TICKS then
         return

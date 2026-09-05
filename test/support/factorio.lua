@@ -77,16 +77,21 @@ function support.tile(tile_prototype, position, hidden_tile)
     }
 end
 
---- A fluidbox with `count` connections, each offering the given target positions
-function support.fluidbox(connections_per_index)
-    local fluidbox = {}
-    for index = 1, #connections_per_index do
-        fluidbox[index] = false -- so that #fluidbox reports the connection count
-    end
-    fluidbox.get_pipe_connections = function(index)
+--- The fluid half of an entity. 2.1 removed LuaFluidBox, so this is a count and a
+--- method on the entity rather than a separate object.
+---@param connections_per_index table list of PipeConnection lists, one per storage
+function support.with_fluid_connections(entity, connections_per_index)
+    entity.fluids_count = #connections_per_index
+    entity.get_fluid_box_pipe_connections = function(index)
         return connections_per_index[index] or {}
     end
-    return fluidbox
+    return entity
+end
+
+--- An entity whose only interesting feature is its fluid connections
+function support.fluid_entity(connections_per_index, fields)
+    local entity = fields or {}
+    return support.with_fluid_connections(entity, connections_per_index)
 end
 
 --- opts.entities: list of { name, type, ghost_name, ghost_type, direction, position = {x,y}, fluidbox }

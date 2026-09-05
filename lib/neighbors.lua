@@ -33,13 +33,37 @@ local function entity_type_or_ghost_type(entity)
     return entity.type == "entity-ghost" and entity.ghost_type or entity.type
 end
 
+--- 2.1 removed LuaFluidBox entirely. The count now comes from
+--- LuaEntity.fluids_count and the connections from
+--- LuaEntity.get_fluid_box_pipe_connections(index).
+---
+--- fluids_count counts every fluid storage, including ones that are not
+--- fluidboxes at all: a fluid turret's internal buffer is the example the docs
+--- give, and a turret is exactly what crashed this mod once before. Asking such
+--- an index for pipe connections can fail, so both calls are guarded.
+---@param entity LuaEntity
+---@return integer
+local function fluid_storage_count(entity)
+    local ok, count = pcall(function() return entity.fluids_count end)
+    if ok and type(count) == "number" then return count end
+    return 0
+end
+
+---@param entity LuaEntity
+---@param index integer
+---@return PipeConnection[]
+local function fluid_box_pipe_connections(entity, index)
+    local ok, connections = pcall(entity.get_fluid_box_pipe_connections, index)
+    if ok and type(connections) == "table" then return connections end
+    return {}
+end
+
 ---@param entity LuaEntity
 ---@param position MapPosition
 ---@return boolean place
 local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position)
-    local fluidbox = entity.fluidbox
-    for i = 1, #fluidbox do
-        for _, pipe_connection in pairs( fluidbox.get_pipe_connections(i) ) do
+    for index = 1, fluid_storage_count(entity) do
+        for _, pipe_connection in pairs( fluid_box_pipe_connections(entity, index) ) do
             -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
             if position[1] == math.floor( ( pipe_connection.target_position.x + 0.25 ) * 2 ) / 2 and
                position[2] == math.floor( ( pipe_connection.target_position.y + 0.25 ) * 2 ) / 2 then
@@ -88,10 +112,7 @@ local function find_connection_neighbor(
                 goto continue_neighbor_entities
             end
             if  ( entity_type ~= "pipe" and entity_type ~= "pipe-to-ground"
-                ) and (
-                    candidate_entity.fluidbox and
-                    #candidate_entity.fluidbox > 0
-                )
+                ) and fluid_storage_count(candidate_entity) > 0
             then
                 if should_place_based_on_neighbor_fluidbox_prototypes(candidate_entity, pipe_position) then
                     return true, false
