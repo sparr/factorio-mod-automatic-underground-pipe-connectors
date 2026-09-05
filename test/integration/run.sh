@@ -21,8 +21,12 @@ display_number="${AUPC_XVFB_DISPLAY:-121}"
 # hardcoded number silently shares somebody else's session. The DimensionSync
 # harness next door uses :99, and this one used to as well.
 require_free_display() {
-    if [[ -e "/tmp/.X11-unix/X$1" ]]; then
-        echo "==> display :$1 is already in use by another X server." >&2
+    # Ask whether a server actually answers rather than whether a socket file
+    # exists: the socket outlives a server that has just exited, which would
+    # block the next run for no reason.
+    if [[ ! -e "/tmp/.X11-unix/X$1" ]]; then return 0; fi
+    if DISPLAY=":$1" timeout 3 xdpyinfo >/dev/null 2>&1; then
+        echo "==> display :$1 is already in use by a running X server." >&2
         echo "    Set AUPC_XVFB_DISPLAY to a free number." >&2
         exit 3
     fi

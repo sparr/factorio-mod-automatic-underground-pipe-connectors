@@ -44,35 +44,68 @@ local walk = {
     last = nil,         -- outcome of the step just run
 }
 
-local function close_prompt()
+local CONTROLLER_NAMES = {}
+for name, value in pairs(defines.controllers) do CONTROLLER_NAMES[value] = name end
+
+--- @param caption string
+--- @return LuaGuiElement frame
+--- @return boolean is_new
+local function ensure_frame(caption)
     local player = world.player
-    if not player then return end
-    local frame = player.gui.screen[FRAME]
-    if frame and frame.valid then frame.destroy() end
+    local existing = player.gui.screen[FRAME]
+    if existing and existing.valid then return existing, false end
+
+    local frame = player.gui.screen.add{
+        type = "frame", name = FRAME, direction = "vertical", caption = caption }
+    -- a strip to drag it by, since a bare frame cannot be moved. Untested: synthetic
+    -- mouse input does not reach the GUI on Xvfb, so this was never clicked here.
+    local grip = frame.add{ type = "empty-widget", name = "grip",
+        style = "draggable_space_header" }
+    grip.style.height = 16
+    grip.style.horizontally_stretchable = true
+    grip.drag_target = frame
+
+    local text = frame.add{ type = "label", name = "body" }
+    text.style.single_line = false
+    text.style.maximal_width = 440
+    text.style.bottom_margin = 8
+    frame.add{ type = "flow", name = "buttons", direction = "horizontal" }
+    return frame, true
 end
 
 --- @param title string
 --- @param body string
---- @param with_next boolean whether the run advances on a click or on something else
+--- @param with_next boolean whether a click advances, or something else does
+---
+--- Built once and relabelled after that, so a frame the player has dragged
+--- somewhere stays there. Positioned only on the first prompt, and only once the
+--- children exist: near the top edge the frame renders with its upper rows cut
+--- off, which silently loses the caption and then the body as it grows.
 local function show_prompt(title, body, with_next)
     local player = world.player
     if not player then return end
-    close_prompt()
-    local frame = player.gui.screen.add{
-        type = "frame", name = FRAME, direction = "vertical", caption = title }
-    frame.auto_center = true
-    local text = frame.add{ type = "label", caption = body }
-    text.style.single_line = false
-    text.style.maximal_width = 460
-    text.style.bottom_margin = 8
-    log("AUPC-PROMPT " .. title .. " | " .. body:gsub("\n", " "))
-    local row = frame.add{ type = "flow", direction = "horizontal" }
+    local caption = title .. "  [" .. (CONTROLLER_NAMES[player.controller_type] or "?") .. "]"
+    local frame, is_new = ensure_frame(caption)
+    frame.caption = caption
+    frame.body.caption = body
+
+    local buttons = frame.buttons
+    buttons.clear()
     if with_next then
-        row.add{ type = "button", name = "aupc-next", caption = "Next", style = "confirm_button" }
+        -- deliberately the plain button style: confirm_button advertises E as its
+        -- shortcut, and E is the inventory key, so the hint would be a lie
+        buttons.add{ type = "button", name = "aupc-next", caption = "Next" }
     end
-    row.add{ type = "button", name = "aupc-skip", caption = "Skip fixture" }
-    row.add{ type = "button", name = "aupc-rest", caption = "Run the rest" }
-    row.add{ type = "button", name = "aupc-stop", caption = "Stop" }
+    buttons.add{ type = "button", name = "aupc-skip", caption = "Skip fixture" }
+    buttons.add{ type = "button", name = "aupc-rest", caption = "Run the rest" }
+    buttons.add{ type = "button", name = "aupc-stop", caption = "Stop" }
+
+    if is_new then
+        -- bottom left, clear of the camera focus at the centre and of the hotbar
+        local resolution = player.display_resolution
+        frame.location = { x = 16, y = math.max(16, resolution.height - 260) }
+    end
+    log("AUPC-PROMPT " .. title .. " | " .. body:gsub("\n", " "))
 end
 
 --- Ask the player to press the key themselves, so a watched run never needs
@@ -100,7 +133,6 @@ script.on_event(defines.events.on_gui_click, function(event)
     else
         return
     end
-    close_prompt()
 end)
 
 --- Context printed alongside a failure, to say what the world looked like
@@ -174,10 +206,24 @@ local function count(item_name)
     return inventory and inventory.get_item_count(item_name) or 0
 end
 
+--- Take the item out of the player's own inventory rather than conjuring it into
+--- the cursor. Otherwise the fixture builds the undergrounds for free and then
+--- watches the mod pay for the connector, which is not a situation any player is
+--- ever in. Editor and remote have nothing to draw from, and the game charges
+--- nothing in either, so those fall back to a stack from thin air.
 local function build_real(name, position, direction, stand_at)
     world.player.teleport(stand_at or position, world.surface)
-    world.player.cursor_stack.set_stack{ name = name, count = 10 }
+    local inventory = world.player.get_main_inventory()
+    local stack = inventory and inventory.find_item_stack(name)
+    if stack then
+        world.player.cursor_stack.swap_stack(stack)
+    else
+        world.player.cursor_stack.set_stack{ name = name, count = 1 }
+    end
     world.player.build_from_cursor{ position = position, direction = direction }
+    if inventory and world.player.cursor_stack.valid_for_read then
+        inventory.insert(world.player.cursor_stack)
+    end
     world.player.cursor_stack.clear()
 end
 
@@ -236,7 +282,7 @@ local function fixture_plain_ground()
     begin("real pair on refined concrete gets a real pipe")
     step("paint the patch with refined concrete and stock 10 pipes", function()
         paint("refined-concrete")
-        stock{ [PIPE] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
         check(same_tile(tile_at_gap(), "refined-concrete"),
             "setup: the gap is " .. tile_at_gap() .. ", not refined concrete")
     end)
@@ -249,6 +295,9 @@ local function fixture_plain_ground()
         check(pipe_at_gap() ~= nil, "no pipe was placed in the gap")
         check(ghost_at_gap() == nil, "a ghost was placed instead of a real pipe")
         check(count(PIPE) == 9, "expected one pipe consumed, inventory holds " .. count(PIPE))
+        check(count(UNDERGROUND) == 8,
+            "both undergrounds should have been paid for too, inventory holds " ..
+            count(UNDERGROUND))
         check(same_tile(tile_at_gap(), "refined-concrete"),
             "the ground was changed to " .. tile_at_gap())
         check(#tile_ghosts_at_gap() == 0, "an unnecessary tile ghost was placed")
@@ -261,7 +310,7 @@ local function fixture_ice_gap_with_cover()
     step("paint refined concrete with an ice gap, stock pipes and cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
-        stock{ [PIPE] = 10, ["refined-concrete"] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = 10 }
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
     step("build underground A, facing south", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
@@ -305,7 +354,7 @@ local function fixture_ice_gap_without_cover()
     step("paint refined concrete with an ice gap, stock pipes but no cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
-        stock{ [PIPE] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
     step("build underground A, facing south", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
@@ -327,7 +376,7 @@ local function fixture_ghost_neighbour()
     begin("ghost neighbour gets a ghost pipe and costs nothing")
     step("paint refined concrete and stock 10 pipes", function()
         paint("refined-concrete")
-        stock{ [PIPE] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
     end)
     step("blueprint a ghost underground at A",
         function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
@@ -346,7 +395,7 @@ local function fixture_no_neighbour()
     begin("a lone underground places nothing")
     step("paint refined concrete and stock 10 pipes", function()
         paint("refined-concrete")
-        stock{ [PIPE] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
     end)
     step("build a single underground at B, with nothing to connect to",
         function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
@@ -421,7 +470,7 @@ local function fixture_undo()
     step("paint refined concrete with an ice gap, stock pipes and cover tiles", function()
         paint("refined-concrete")
         paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
-        stock{ [PIPE] = 10, ["refined-concrete"] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = 10 }
         check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
     end)
     step("build underground A, facing south", function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
@@ -469,7 +518,6 @@ local function fixture_undo()
         if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
             return "again"
         end
-        close_prompt()
     end)
     step("check the cover tile and both entities were queued for removal", function()
         local stack = world.player.undo_redo_stack
@@ -533,7 +581,7 @@ local function fixture_character()
         world.stand = { x = world.left + 9.5, y = 5.5 }
         note("controller: " .. tostring(world.player.controller_type) ..
              " (character is " .. tostring(defines.controllers.character) .. ")")
-        stock{ [PIPE] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
         check(count(PIPE) == 10, "the character has no usable main inventory")
     end)
     step("build underground A from the character, standing clear of it", function()
@@ -555,7 +603,7 @@ local function fixture_remote()
     begin("remote view: connector is a ghost and costs nothing")
     step("stock pipes, then switch to remote view", function()
         paint("refined-concrete")
-        stock{ [PIPE] = 10 }
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
         world.player.set_controller{
             type = defines.controllers.remote,
             position = world.b,
@@ -657,7 +705,6 @@ local function fixture_editor_undo()
         if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
             return "again"
         end
-        close_prompt()
     end)
     step("check the cover tile reverted and both entities vanished", function()
         if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
