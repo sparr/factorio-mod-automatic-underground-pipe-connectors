@@ -23,8 +23,15 @@ end
 local report = chunk()
 
 local failed = 0
+local skipped = 0
 for _, fixture in ipairs(report.fixtures or {}) do
-    if #fixture.failures == 0 then
+    if fixture.skipped then
+        skipped = skipped + 1
+        print("skip " .. fixture.name)
+        for _, note in ipairs(fixture.notes or {}) do
+            print("     . " .. note)
+        end
+    elseif #fixture.failures == 0 then
         print("ok   " .. fixture.name)
     else
         failed = failed + 1
@@ -44,5 +51,6 @@ if report.error then
     print("       " .. report.error)
 end
 
-print(string.format("\n%d fixtures, %d failed", #(report.fixtures or {}), failed))
+print(string.format("\n%d fixtures, %d failed, %d skipped",
+    #(report.fixtures or {}), failed, skipped))
 os.exit(failed == 0 and 0 or 1)

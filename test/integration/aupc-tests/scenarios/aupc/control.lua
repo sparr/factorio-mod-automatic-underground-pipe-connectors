@@ -8,11 +8,14 @@ local SENTINEL = "AUPC-TESTS-COMPLETE"
 local UNDERGROUND = "pipe-to-ground"
 local PIPE = "pipe"
 local PATCH = 12
+--- How long a step may wait on synthetic input before giving up, in ticks
+local WAIT_TICKS = 600
 
 local report = { fixtures = {} }
 local steps = {}
 local step_index = 1
 local finished = false
+local probe_seen = false
 local current
 local world = {}
 
@@ -318,6 +321,170 @@ local function fixture_ocean_ghosts()
     end)
 end
 
+--- Undo is the one thing Lua cannot reach: LuaUndoRedoStack can read, tag and
+--- remove entries but never perform one. Only a real ctrl+z proves that the tile
+--- the mod registered actually comes back out.
+local function fixture_undo()
+    begin("ctrl+z queues the cover tile for removal with the underground")
+    step(function()
+        paint("refined-concrete")
+        paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
+        stock{ [PIPE] = 10, ["refined-concrete"] = 10 }
+        check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
+    end)
+    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step(function()
+        -- the state we are about to undo has to be the state we think it is
+        check(same_tile(tile_at_gap(), "refined-concrete"),
+            "setup: the gap was never covered, it is " .. tile_at_gap())
+        check(count("refined-concrete") == 9,
+            "setup: the cover tile was not paid for, inventory holds " .. count("refined-concrete"))
+        -- is there anything for ctrl+z to act on at all?
+        local stack = world.player.undo_redo_stack
+        note("undo items: " .. stack.get_undo_item_count())
+        for index = 1, math.min(2, stack.get_undo_item_count()) do
+            local kinds = {}
+            for _, action in pairs(stack.get_undo_item(index)) do
+                kinds[#kinds + 1] = tostring(action.type)
+            end
+            note("  item " .. index .. ": " .. #kinds .. " actions [" ..
+                 table.concat(kinds, ", ") .. "]")
+        end
+        note("controller: " .. tostring(world.player.controller_type) ..
+             " (god is " .. tostring(defines.controllers.god) .. ")")
+
+        world.player.teleport(world.b, world.surface)
+        log("AUPC-AWAIT-PROBE")
+    end)
+    step(function()
+        -- does any synthetic key reach the game?
+        if not probe_seen then return "again" end
+    end)
+    step(function()
+        note("synthetic input reaches the game: " .. tostring(probe_seen))
+        -- an undo pushes onto the redo stack, which is a far better signal that
+        -- the keypress landed than guessing what the undo will have removed
+        world.redo_before = world.player.undo_redo_stack.get_redo_item_count()
+        log("AUPC-AWAIT-UNDO")
+    end)
+    step(function()
+        if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
+            return "again"
+        end
+    end)
+    step(function()
+        local stack = world.player.undo_redo_stack
+        if stack.get_redo_item_count() == world.redo_before then
+            current.skipped = true
+            note(probe_seen
+                and "keys arrive but ctrl+z did not undo anything"
+                or  "no synthetic input reached the game at all")
+            return
+        end
+        note("after ctrl+z: " .. stack.get_undo_item_count() .. " undo, " ..
+             stack.get_redo_item_count() .. " redo")
+
+        local function whats_at(position, label)
+            local names = {}
+            for _, entity in pairs(world.surface.find_entities{
+                { position.x - 0.4, position.y - 0.4 }, { position.x + 0.4, position.y + 0.4 }
+            }) do
+                names[#names + 1] = entity.name ..
+                    (entity.name == "entity-ghost" and "(" .. entity.ghost_name .. ")" or "")
+            end
+            note(label .. ": " .. (#names > 0 and table.concat(names, "+") or "empty"))
+        end
+        whats_at(world.a, "at A after undo")
+        whats_at(world.b, "at B after undo")
+        whats_at(world.gap, "at gap after undo")
+
+        -- 2.0 undo does not revert anything on the spot: it issues deconstruction
+        -- orders for bots. Without bots the tile stays put and gains a proxy, so
+        -- that proxy is the evidence the cover tile was part of the undo item.
+        local proxies = world.surface.find_entities_filtered{
+            name = "deconstructible-tile-proxy", position = world.gap,
+        }
+        check(#proxies == 1,
+            "the cover tile the mod placed was not queued for removal by the undo")
+
+        local underground = world.surface.find_entity(UNDERGROUND, world.b)
+        check(underground ~= nil and underground.to_be_deconstructed(),
+            "the underground was not part of the undo item the tile joined")
+
+        -- the connector turns out to be in the undo item too, which is more than
+        -- expected: create_entity has no undo parameter, so the engine is
+        -- attributing it to the player action that triggered it
+        local connector = pipe_at_gap()
+        check(connector ~= nil and connector.to_be_deconstructed(),
+            "the connector pipe was left behind by the undo")
+    end)
+end
+
+--- Editor mode is the other half of undo: placements are free and an undo takes
+--- effect on the spot rather than queueing deconstruction for bots.
+local function fixture_editor_undo()
+    begin("editor mode: undo reverts the cover tile immediately")
+    step(function()
+        world.player.set_controller{ type = defines.controllers.editor }
+        -- the map editor pauses entity updates, which also stops on_tick and would
+        -- strand the rest of the run with no report at all
+        game.tick_paused = false
+        world.player.teleport(world.b, world.surface)
+        note("controller: " .. tostring(world.player.controller_type) ..
+             " (editor is " .. tostring(defines.controllers.editor) .. ")")
+        paint("refined-concrete")
+        paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
+        check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
+    end)
+    step(function()
+        local inventory = world.player.get_main_inventory()
+        if inventory then
+            inventory.clear()
+            inventory.insert{ name = PIPE, count = 10 }
+            inventory.insert{ name = "refined-concrete", count = 10 }
+            note("editor inventory holds " .. inventory.get_item_count(PIPE) .. " pipes")
+        else
+            note("the editor controller has no main inventory")
+        end
+    end)
+    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step(function()
+        check(pipe_at_gap() ~= nil, "no connector was placed in editor mode")
+        check(same_tile(tile_at_gap(), "refined-concrete"),
+            "the gap was not covered, it is " .. tile_at_gap())
+        -- the game does not charge for a build in editor mode, but the mod removes
+        -- the items itself, so this records whether it charges when the game does not
+        local inventory = world.player.get_main_inventory()
+        if inventory then
+            note("after building, pipes " .. inventory.get_item_count(PIPE) ..
+                 " and cover tiles " .. inventory.get_item_count("refined-concrete") ..
+                 " (10 each would mean the mod charged nothing)")
+        end
+        world.redo_before = world.player.undo_redo_stack.get_redo_item_count()
+        log("AUPC-AWAIT-UNDO")
+    end)
+    step(function()
+        if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
+            return "again"
+        end
+    end)
+    step(function()
+        if world.player.undo_redo_stack.get_redo_item_count() == world.redo_before then
+            current.skipped = true
+            note("no undo arrived, so nothing was checked")
+            return
+        end
+        note("gap tile after undo: " .. tile_at_gap())
+        check(tile_at_gap() == "ice-rough",
+            "the cover tile was not reverted, the gap is " .. tile_at_gap())
+        check(world.surface.find_entity(UNDERGROUND, world.b) == nil,
+            "the underground survived an editor mode undo")
+        check(pipe_at_gap() == nil, "the connector survived an editor mode undo")
+    end)
+end
+
 --------------------------------------------------------------------------- driver
 
 local function prepare(player)
@@ -341,7 +508,6 @@ end
 local function finish()
     helpers.write_file(RESULTS_FILE, serpent.dump(report))
     log(SENTINEL)
-    print(SENTINEL)
 end
 
 fixture_plain_ground()
@@ -350,9 +516,17 @@ fixture_ice_gap_without_cover()
 fixture_ghost_neighbour()
 fixture_no_neighbour()
 fixture_ocean_ghosts()
+fixture_undo()
+fixture_editor_undo()
+
+script.on_event("aupc-tests-probe", function()
+    probe_seen = true
+end)
 
 script.on_event(defines.events.on_tick, function()
     if finished then return end
+    -- nothing in this scenario wants a paused game; a pause here means no report
+    if game.tick_paused then game.tick_paused = false end
     local player = game.players[1]
     if not player then return end
     if game.tick < 30 then return end
@@ -373,9 +547,18 @@ script.on_event(defines.events.on_tick, function()
         return
     end
 
+    if world.running_step ~= step_index then
+        world.running_step = step_index
+        world.step_started = game.tick
+    end
+
     local this_step = steps[step_index]
-    step_index = step_index + 1
     local ok, err = pcall(this_step)
+    -- a step that returns "again" is waiting on something outside the game
+    if ok and err == "again" and game.tick - world.step_started < WAIT_TICKS then
+        return
+    end
+    step_index = step_index + 1
     if not ok then
         local where = current and current.name or "before the first fixture"
         report.error = ("step %d (%s) failed: %s"):format(step_index - 1, where, tostring(err))

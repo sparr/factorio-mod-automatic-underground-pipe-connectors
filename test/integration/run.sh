@@ -45,24 +45,11 @@ else
 fi
 launcher=$!
 
-# Block on the sentinel rather than polling, so a fast run finishes fast, and
-# watch for a scenario that failed to load as well. Without that second pattern
-# a syntax error in the scenario costs the whole timeout before saying so.
-matched="$(timeout "$deadline" grep -m1 -E "$sentinel|Error .*control\\.lua" \
-    < <(tail -n +1 -F "$env_dir/run.out") || true)"
-if [[ "$matched" == *"$sentinel"* ]]; then
-    echo "==> scenario finished"
-elif [[ -n "$matched" ]]; then
-    echo "==> the scenario failed to run:" >&2
-    echo "    $matched" >&2
-else
-    echo "==> gave up after ${deadline}s without the sentinel" >&2
-fi
-
-# Only ever kill the game we started. Three independent conditions have to hold,
-# because a bare `pkill -f` is dangerous here in two directions: it matches any
-# shell whose argv happens to quote the pattern (including the one that wrote
-# this script), and it would happily kill a Factorio the user is playing.
+# Kill only the game this run started: it must be named factorio, carry our
+# config path, and descend from our launcher, so a session the user is playing
+# can never match. Running from a trap matters because a run cut short -- piped
+# into head, or interrupted -- otherwise leaves a process holding the write-data
+# lock, and the next run cannot start at all.
 descends_from_launcher() {
     local pid="$1" guard=0
     while [[ -n "$pid" && "$pid" != "1" && "$pid" != "0" ]]; do
@@ -73,15 +60,114 @@ descends_from_launcher() {
     return 1
 }
 
-for pid in $(pgrep -f -- "--config $env_dir/config.ini" 2>/dev/null || true); do
-    # 1. it is the game itself, not a shell quoting our command line
-    [[ "$(cat "/proc/$pid/comm" 2>/dev/null || true)" == "factorio" ]] || continue
-    # 2. it was started by this script, so a session the user launched is untouchable
-    descends_from_launcher "$pid" || continue
-    # 3. and it is not us
-    [[ "$pid" == "$$" ]] && continue
-    kill -TERM "$pid" 2>/dev/null || true
+stop_game() {
+    for pid in $(pgrep -f -- "--config $env_dir/config.ini" 2>/dev/null || true); do
+        [[ "$(cat "/proc/$pid/comm" 2>/dev/null || true)" == "factorio" ]] || continue
+        descends_from_launcher "$pid" || continue
+        [[ "$pid" == "$$" ]] && continue
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+}
+trap stop_game EXIT INT TERM
+
+# Block on a marker rather than polling, so a fast run finishes fast. Watching
+# for a scenario that failed to load matters too: without it a syntax error in
+# the scenario costs the whole timeout before saying so.
+# Each call resumes after the previous match, so a second marker of the same
+# shape is not answered by rereading the first one. The result comes back in a
+# global rather than through $(...), which would run this in a subshell and
+# throw the new offset away -- and then answer the first marker forever.
+watch_offset=1
+WAIT_MATCH=""
+wait_for() {
+    local hit
+    hit="$(timeout "$deadline" grep -n -m1 -E "$1" \
+        < <(tail -n "+$watch_offset" -F "$env_dir/run.out") || true)"
+    if [[ -z "$hit" ]]; then
+        WAIT_MATCH=""
+        return 1
+    fi
+    watch_offset=$(( watch_offset + ${hit%%:*} ))
+    WAIT_MATCH="${hit#*:}"
+    return 0
+}
+
+# Synthetic input goes to the private Xvfb display and nowhere else by default.
+# A key aimed at a window on a desktop somebody is using can leave a modifier
+# stuck down system wide, so sending to $AUPC_DISPLAY takes a second opt-in.
+send_keys() {
+    local keys="$1" target window
+    if [[ -n "${AUPC_DISPLAY:-}" ]]; then
+        if [[ -z "${AUPC_ALLOW_INPUT_ON_DISPLAY:-}" ]]; then
+            echo "==> refusing to send '$keys' to $AUPC_DISPLAY;" \
+                 "set AUPC_ALLOW_INPUT_ON_DISPLAY=1 to override" >&2
+            return 1
+        fi
+        target="$AUPC_DISPLAY"
+    else
+        target=":$display_number"
+    fi
+
+    window="$(DISPLAY="$target" xdotool search --name "Factorio" 2>/dev/null | tail -1 || true)"
+    if [[ -z "$window" ]]; then
+        echo "==> no Factorio window on $target, cannot send '$keys'" >&2
+        return 1
+    fi
+    if [[ -n "${AUPC_INPUT_DEBUG:-}" ]]; then
+        echo "--- windows matching Factorio on $target ---" >&2
+        DISPLAY="$target" xdotool search --name "Factorio" 2>/dev/null | while read -r w; do
+            echo "    $w name=$(DISPLAY="$target" xdotool getwindowname "$w" 2>/dev/null)" \
+                 "geom=$(DISPLAY="$target" xdotool getwindowgeometry --shell "$w" 2>/dev/null \
+                         | tr '\n' ' ')" >&2
+        done
+    fi
+
+    # There is no window manager on the Xvfb display, so focus has to be set by
+    # hand. xdotool's key events are XTEST, which follow the input focus rather
+    # than a window id; --window would use XSendEvent, which SDL ignores.
+    DISPLAY="$target" xdotool windowmap "$window" 2>/dev/null || true
+    DISPLAY="$target" xdotool windowraise "$window" 2>/dev/null || true
+    DISPLAY="$target" xdotool windowfocus "$window" 2>/dev/null || true
+    # Park the pointer inside the window too: with PointerRoot focus the server
+    # delivers to whatever is under the cursor rather than to the focused window.
+    DISPLAY="$target" xdotool mousemove --window "$window" 320 240 2>/dev/null || true
+
+    if [[ -n "${AUPC_INPUT_DEBUG:-}" ]]; then
+        echo "    focus is now $(DISPLAY="$target" xdotool getwindowfocus 2>/dev/null)" \
+             "($(DISPLAY="$target" xdotool getwindowfocus getwindowname 2>/dev/null))" >&2
+    fi
+
+    DISPLAY="$target" xdotool key --clearmodifiers --delay 120 "$keys"
+    echo "==> sent $keys to window $window on $target"
+}
+
+# The scenario asks for keys by printing a marker; answer each and keep watching.
+matched=""
+for _ in $(seq 1 20); do
+    if ! wait_for "AUPC-AWAIT-[A-Z]+|$sentinel|Error .*control\\.lua"; then
+        matched=""
+        break
+    fi
+    matched="$WAIT_MATCH"
+    case "$matched" in
+        *AUPC-AWAIT-PROBE*) send_keys "ctrl+shift+F9" || true ;;
+        *AUPC-AWAIT-UNDO*)  send_keys "ctrl+z" || true ;;
+        *)                  break ;;
+    esac
 done
+
+if grep -q "Couldn't acquire exclusive lock" "$env_dir/run.out" 2>/dev/null; then
+    echo "==> another Factorio still holds this environment's lock; it did not start" >&2
+elif [[ "$matched" == *"$sentinel"* ]]; then
+    echo "==> scenario finished"
+elif [[ -n "$matched" ]]; then
+    echo "==> the scenario failed to run:" >&2
+    echo "    $matched" >&2
+else
+    echo "==> gave up after ${deadline}s without the sentinel" >&2
+fi
+
+stop_game
 wait "$launcher" 2>/dev/null || true
 
 exec lua5.2 "$here/report.lua" "$results"
