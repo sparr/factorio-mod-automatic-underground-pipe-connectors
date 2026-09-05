@@ -75,10 +75,14 @@ local function on_built_entity(event)
 
     local player = game.players[event.player_index]
     local inventory = player.get_main_inventory()
+    -- The map editor does not charge for a build, so a connector placed alongside
+    -- one should not be charged for either, and there is nothing to run out of
+    -- that would justify downgrading it to a ghost.
+    local free_build = player.controller_type == defines.controllers.editor
     local pipe_stack --[[@type LuaItemStack?]]
 
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
-    if not placing_ghost then
+    if not placing_ghost and not free_build then
         if inventory then
             pipe_stack = inventory.find_item_stack(pipe_item_name)
             placing_ghost = not pipe_stack
@@ -153,7 +157,7 @@ local function on_built_entity(event)
         end
         -- a real cover tile only makes sense under a real pipe, and only if we have the item to pay for it
         local cover_ghost = placing_ghost
-        if not cover_ghost then
+        if not cover_ghost and not free_build then
             local cover_item_name = tiles.tile_item_name( melt_cover_tile_proto.name )
             if cover_item_name and inventory and inventory.find_item_stack( cover_item_name ) then
                 melt_tile_item_name = cover_item_name
@@ -308,7 +312,7 @@ local function on_built_entity(event)
         end
     end
 
-    if not placing_ghost then
+    if not placing_ghost and not free_build then
         -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
         if inventory then
             inventory.remove({name=pipe_item_name})
@@ -323,7 +327,7 @@ local function on_built_entity(event)
     if not underground_surface.create_entity(pipe_entity_definition --[[@as LuaSurface.create_entity_param]]) then
         -- the world changed under us between the checks above and now
         rollback()
-        if not placing_ghost and inventory then
+        if not placing_ghost and not free_build and inventory then
             inventory.insert({name=pipe_item_name, count=1})
         end
     end

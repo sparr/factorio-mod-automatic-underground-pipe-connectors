@@ -77,6 +77,7 @@ end
 
 local function stock(items)
     local inventory = world.player.get_main_inventory()
+    if not inventory then return end
     inventory.clear()
     for name, count in pairs(items) do
         inventory.insert{ name = name, count = count }
@@ -84,11 +85,12 @@ local function stock(items)
 end
 
 local function count(item_name)
-    return world.player.get_main_inventory().get_item_count(item_name)
+    local inventory = world.player.get_main_inventory()
+    return inventory and inventory.get_item_count(item_name) or 0
 end
 
-local function build_real(name, position, direction)
-    world.player.teleport(position, world.surface)
+local function build_real(name, position, direction, stand_at)
+    world.player.teleport(stand_at or position, world.surface)
     world.player.cursor_stack.set_stack{ name = name, count = 10 }
     world.player.build_from_cursor{ position = position, direction = direction }
     world.player.cursor_stack.clear()
@@ -421,6 +423,94 @@ local function fixture_undo()
     end)
 end
 
+--- Freeplay's controller: a real body, a real inventory, and a build reach
+local function fixture_character()
+    begin("character controller: pays for the connector out of the character")
+    step(function()
+        paint("refined-concrete")
+        local character = world.surface.create_entity{
+            name = "character", position = { x = world.left + 9.5, y = 5.5 },
+            force = world.player.force,
+        }
+        if not check(character ~= nil, "could not create a character to control") then return end
+        world.player.set_controller{ type = defines.controllers.character, character = character }
+        world.stand = { x = world.left + 9.5, y = 5.5 }
+        note("controller: " .. tostring(world.player.controller_type) ..
+             " (character is " .. tostring(defines.controllers.character) .. ")")
+        stock{ [PIPE] = 10 }
+        check(count(PIPE) == 10, "the character has no usable main inventory")
+    end)
+    step(function()
+        build_real(UNDERGROUND, world.a, defines.direction.south, world.stand)
+    end)
+    step(function()
+        build_real(UNDERGROUND, world.b, defines.direction.north, world.stand)
+    end)
+    step(function()
+        check(pipe_at_gap() ~= nil, "no connector was placed")
+        check(ghost_at_gap() == nil,
+            "a ghost was placed instead of a real pipe, " .. tostring(ghost_at_gap()))
+        check(count(PIPE) == 9, "expected one pipe consumed, character holds " .. count(PIPE))
+    end)
+end
+
+--- Map view: cannot move or change items, can only order ghosts
+local function fixture_remote()
+    begin("remote view: connector is a ghost and costs nothing")
+    step(function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10 }
+        world.player.set_controller{
+            type = defines.controllers.remote,
+            position = world.b,
+            surface = world.surface,
+        }
+        note("controller: " .. tostring(world.player.controller_type) ..
+             " (remote is " .. tostring(defines.controllers.remote) .. ")")
+        note("has a main inventory: " .. tostring(world.player.get_main_inventory() ~= nil))
+    end)
+    -- Ordering ghosts is what remote view can actually do. build_from_cursor
+    -- ignores the restriction and builds for real, which no player can, so it
+    -- would test the API rather than the mod.
+    step(function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
+    step(function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
+    step(function()
+        note("at the gap: ghost=" .. tostring(ghost_at_gap()) ..
+             " real=" .. tostring(pipe_at_gap() ~= nil))
+        check(pipe_at_gap() == nil, "a real pipe was built from remote view")
+        check(ghost_at_gap() == PIPE,
+            "expected a ghost connector, found " .. tostring(ghost_at_gap()))
+        check(count(PIPE) == 10, "the mod charged for a ghost, inventory holds " .. count(PIPE))
+    end)
+end
+
+--- Nothing to pay with is not a reason to place a ghost when nothing is charged
+local function fixture_editor_free()
+    begin("editor mode: builds real with an empty inventory")
+    step(function()
+        world.player.set_controller{ type = defines.controllers.editor }
+        game.tick_paused = false
+        world.player.teleport(world.b, world.surface)
+        paint("refined-concrete")
+        paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
+        local inventory = world.player.get_main_inventory()
+        if inventory then inventory.clear() end
+        check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
+    end)
+    step(function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step(function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step(function()
+        check(pipe_at_gap() ~= nil, "no connector was placed")
+        check(ghost_at_gap() == nil,
+            "a ghost was placed for want of an item that costs nothing, " ..
+            tostring(ghost_at_gap()))
+        check(same_tile(tile_at_gap(), "refined-concrete"),
+            "the gap was not covered with a real tile, it is " .. tile_at_gap())
+        check(#tile_ghosts_at_gap() == 0,
+            "a cover ghost was placed for want of an item that costs nothing")
+    end)
+end
+
 --- Editor mode is the other half of undo: placements are free and an undo takes
 --- effect on the spot rather than queueing deconstruction for bots.
 local function fixture_editor_undo()
@@ -454,13 +544,15 @@ local function fixture_editor_undo()
         check(pipe_at_gap() ~= nil, "no connector was placed in editor mode")
         check(same_tile(tile_at_gap(), "refined-concrete"),
             "the gap was not covered, it is " .. tile_at_gap())
-        -- the game does not charge for a build in editor mode, but the mod removes
-        -- the items itself, so this records whether it charges when the game does not
+        -- the game does not charge for a build in editor mode, so neither should we
         local inventory = world.player.get_main_inventory()
         if inventory then
-            note("after building, pipes " .. inventory.get_item_count(PIPE) ..
-                 " and cover tiles " .. inventory.get_item_count("refined-concrete") ..
-                 " (10 each would mean the mod charged nothing)")
+            check(inventory.get_item_count(PIPE) == 10,
+                "the mod charged for a pipe in editor mode, " ..
+                inventory.get_item_count(PIPE) .. " left of 10")
+            check(inventory.get_item_count("refined-concrete") == 10,
+                "the mod charged for a cover tile in editor mode, " ..
+                inventory.get_item_count("refined-concrete") .. " left of 10")
         end
         world.redo_before = world.player.undo_redo_stack.get_redo_item_count()
         log("AUPC-AWAIT-UNDO")
@@ -517,6 +609,9 @@ fixture_ghost_neighbour()
 fixture_no_neighbour()
 fixture_ocean_ghosts()
 fixture_undo()
+fixture_character()
+fixture_remote()
+fixture_editor_free()
 fixture_editor_undo()
 
 script.on_event("aupc-tests-probe", function()

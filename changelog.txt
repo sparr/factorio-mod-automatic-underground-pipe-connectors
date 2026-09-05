@@ -2,6 +2,8 @@
 Version: 2.0.14
 Date: ????
   Changes:
+  Bugfixes:
+    - Connectors placed in editor mode no longer consume items, since building is free there
 ---------------------------------------------------------------------------------------------------
 Version: 2.0.13
 Date: 2026-09-05
