@@ -3,6 +3,9 @@ Version: 2.1.1
 Date: ????
   Changes:
     - Connectors are a ghost or not based on your own placement, not the neighbour's
+  Bugfixes:
+    - Only connect fluidboxes whose connection categories allow it, so tiered-fluid mods
+      no longer get a connector that joins nothing and costs an item
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05
