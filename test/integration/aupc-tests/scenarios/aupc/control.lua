@@ -486,6 +486,59 @@ local function fixture_quality_cover_tile()
     end)
 end
 
+--- Issue #19, from the blueprint on the report. An underground opens south into two
+--- storage tanks sitting side by side; relative to the underground, tank A is at
+--- (-2,+2) and tank B at (+1,+2).
+---
+--- The ordering is what does the damage. With tank A down and the underground down,
+--- the tile tank B is about to occupy is still empty, while tank A's side connection
+--- points straight at it -- so the mod fills it with a connector and the tank that
+--- was meant to go there no longer fits. The report reads as the blueprint deleting a
+--- tank; really the tank never gets placed. Placing tank A and then the underground
+--- by hand still puts a pipe on that tile, which is the mod doing its job.
+---
+--- This fixture does not fail without the blueprint check, and cannot on 2.1: the
+--- engine creates every entity of a stamp before raising any of their build events,
+--- so tank B is already standing there when the mod looks and the occupancy guard
+--- turns it away. It guards the outcome rather than the mechanism. What actually
+--- makes the mod safe here is that it ignores a stamp outright, which holds whatever
+--- order the engine chooses to build in.
+local function fixture_issue_19_blueprint()
+    begin("a stamp is not blocked by a connector wedged into it")
+    step("paint refined concrete and stock pipes", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+    end)
+    step("stamp the blueprint from the report", function()
+        world.player.cursor_stack.set_stack{ name = "blueprint" }
+        -- positions relative to the underground, in the order the report's blueprint
+        -- lists them: the underground first, then the two tanks
+        world.player.cursor_stack.set_blueprint_entities{
+            { entity_number = 1, name = UNDERGROUND, position = { 0, 0 },
+              direction = defines.direction.south },
+            { entity_number = 2, name = "storage-tank", position = { -2, 2 },
+              direction = defines.direction.east },
+            { entity_number = 3, name = "storage-tank", position = { 1, 2 },
+              direction = defines.direction.north },
+        }
+        world.player.build_from_cursor{ position = { x = world.left + 6.5, y = 5.5 } }
+        world.player.cursor_stack.clear()
+    end)
+    step("check the stamp landed whole, with no connector wedged into it", function()
+        local patch = { { world.left, 0 }, { world.left + PATCH, PATCH } }
+        local tanks = world.surface.find_entities_filtered{ ghost_name = "storage-tank", area = patch }
+        local undergrounds = world.surface.find_entities_filtered{ ghost_name = UNDERGROUND, area = patch }
+        local connectors = world.surface.find_entities_filtered{ ghost_name = PIPE, area = patch }
+        note("stamped: " .. #undergrounds .. " underground, " .. #tanks .. " tanks, " ..
+             #connectors .. " connectors")
+        check(#undergrounds == 1, "expected the blueprint's underground, found " .. #undergrounds)
+        check(#connectors == 0,
+            "the mod wedged " .. #connectors .. " connector(s) into the blueprint")
+        check(#tanks == 2,
+            "the blueprint should have placed both tanks, only " .. #tanks .. " landed")
+    end)
+end
+
 --- Warptorio's warp foundation: buildable ground naming empty-space as its cover.
 --- The mod used to hand that straight to can_place_entity as a tile ghost and die on
 --- "empty-space can not be part a tile ghost".
@@ -1480,6 +1533,7 @@ fixture_quality_substitution()
 fixture_quality_cover_tile()
 fixture_covered_ground()
 fixture_warp_foundation()
+fixture_issue_19_blueprint()
 fixture_unghostable_cover()
 fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()
