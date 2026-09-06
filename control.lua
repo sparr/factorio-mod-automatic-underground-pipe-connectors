@@ -545,3 +545,24 @@ script.on_event(
     on_built_entity,
     {{filter="type",type="pipe-to-ground"},{filter="ghost_type",type="pipe-to-ground"}}
 )
+
+--- The integration tier, which runs inside a live game rather than against stubs.
+--- Registered here rather than from the test mod because only the owning mod may write
+--- its own runtime-per-user setting, which the quality fixtures need to do.
+--- aupc-tests is never published, so this can never fire on a player's machine -- which
+--- matters, because info.json keeps test/ out of the package.
+if script.active_mods["factorio-test"] and script.active_mods["aupc-tests"] then
+    require("__factorio-test__/init")({
+        "test.ft.basics",
+        "test.ft.quality",
+        "test.ft.junctions",
+        "test.ft.tiles",
+        "test.ft.neighbours",
+        "test.ft.blueprints",
+        "test.ft.controllers",
+        "test.ft.undo",
+    }, {
+        load_luassert = false,
+        game_speed = 100,
+    })
+end

@@ -17,6 +17,10 @@ package.loaded["util"] = {
 
 local registered = { events = {}, on_init = 0, on_configuration_changed = 0, interfaces = {} }
 _G.script = {
+    -- empty, so the integration tier's hook at the end of control.lua stays inert:
+    -- it only fires when factorio-test and aupc-tests are both loaded, which is
+    -- never true here and never true on a player's machine
+    active_mods = {},
     on_init = function() registered.on_init = registered.on_init + 1 end,
     on_configuration_changed = function()
         registered.on_configuration_changed = registered.on_configuration_changed + 1

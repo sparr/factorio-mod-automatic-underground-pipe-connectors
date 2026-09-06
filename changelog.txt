@@ -1,6 +1,13 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.3
 Date: ????
+  Changes:
+    - Move the integration tests onto the Factorio Test mod. They run headless in about
+      five seconds now, with no display and no synthetic keypresses, and cover both
+      values of the quality substitution setting in one run instead of needing two
+    - Drop the walkthrough mode and the ctrl+z undo checks, which Factorio Test cannot
+      drive yet. The undo fixtures assert what joined the player's undo item instead of
+      pressing the key and watching what came back
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.2
 Date: 2026-09-06

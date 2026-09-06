@@ -1,4 +1,3 @@
 *.zip
 .luarocks/
-test/integration/env/
-test/integration/aupc-tests/scenarios/aupc/mode.lua
+node_modules/

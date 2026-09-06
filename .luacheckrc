@@ -22,13 +22,32 @@ stds.factorio = {
     },
 }
 
-exclude_files = { ".luarocks/**", "test/integration/env/**" }
+exclude_files = { ".luarocks/**", "node_modules/**" }
 
 files["control.lua"].std = "lua52+factorio"
 files["settings.lua"].std = "lua52+factorio"
 files["lib/*.lua"].std = "lua52+factorio"
-files["test/**/*.lua"] = {
+files["test/spec/*.lua"] = {
     std = "lua52+factorio+busted",
     -- the stubs install the globals the mod only ever reads
     globals = { "defines", "game", "prototypes", "remote", "script", "storage" },
 }
+files["test/support/*.lua"] = {
+    std = "lua52+factorio+busted",
+    globals = { "defines", "game", "prototypes", "remote", "script", "storage" },
+}
+
+-- The integration tier runs inside the game, against factorio-test's own globals
+stds.factorio_test = {
+    read_globals = {
+        "after_all", "after_each", "after_test", "after_ticks", "async", "describe",
+        "done", "it", "on_tick", "test", "tags", "ticks_between_tests",
+    },
+}
+files["test/ft/*.lua"] = {
+    std = "lua52+factorio+factorio_test",
+    -- a fixture drives the game rather than reading it: the pause, the cursor and the
+    -- mod's own setting are all written from here
+    globals = { "game", "settings" },
+}
+files["test/ft/aupc-tests/*.lua"].std = "lua52+factorio"

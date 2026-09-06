@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Unit tier: lib/ against stubs, in the same Lua 5.2 that Factorio runs.
-# Anything about what the engine really does belongs in the integration tier.
+# Anything about what the engine really does belongs in test/ft, which drives a
+# real game; see test/ft/README.md.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"

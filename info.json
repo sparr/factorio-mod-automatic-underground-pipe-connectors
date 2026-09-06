@@ -9,7 +9,11 @@
   "description": "Automatically place a pipe when two undergrounds are placed at a corner or one space apart",
   "package": {
     "ignore": [
-      "test/**"
+      "test/**",
+      "node_modules/**",
+      "package.json",
+      "package-lock.json",
+      "factorio-test.json"
     ]
   }
 }
