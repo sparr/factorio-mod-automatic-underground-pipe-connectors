@@ -2,6 +2,10 @@
 Version: 2.1.2
 Date: ????
   Bugfixes:
+    - Judge a neighbouring underground by its fluid connections rather than by which
+      way it faces, so a junction underground is no longer bridged on a side it has no
+      connection on. Pipe Plus's T junction was getting a pipe it cannot join, and
+      paying for it; its X junction opens that way and still connects
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.1
 Date: 2026-09-06

@@ -115,17 +115,27 @@ local function connection_category_of(entity, index, connection_index)
     return connection and connection.connection_category or nil
 end
 
+--- Does this entity have an above-ground connection reaching for `position`, of a
+--- kind the pipe we would place could join? Every connection of every fluid storage
+--- is asked, not just the first: a junction underground carries several, and the one
+--- that matters is rarely the one at the front of the list.
+---
+--- Only "normal" connections count. An underground pipe also carries an "underground"
+--- one, whose target is the far end of the buried run -- and for Pipe Plus's T
+--- junction that target is the very tile in question, so counting it would agree that
+--- a pipe belongs on a side the entity does not open onto.
 ---@param entity LuaEntity
 ---@param position MapPosition
 ---@param pipe_categories table<string, true> categories of the pipe that would be placed
 ---@return boolean place
-local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position, pipe_categories)
+local function opens_onto(entity, position, pipe_categories)
     for index = 1, fluid_storage_count(entity) do
         local connections = fluid_box_pipe_connections(entity, index)
         for j = 1, #connections do
             local pipe_connection = connections[j]
             -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
-            if position[1] == math.floor( ( pipe_connection.target_position.x + 0.25 ) * 2 ) / 2 and
+            if pipe_connection.connection_type == "normal" and
+               position[1] == math.floor( ( pipe_connection.target_position.x + 0.25 ) * 2 ) / 2 and
                position[2] == math.floor( ( pipe_connection.target_position.y + 0.25 ) * 2 ) / 2 then
                 -- the geometry lines up; only connect if the categories say it could
                 if connection_categories_intersect(
@@ -140,6 +150,8 @@ local function should_place_based_on_neighbor_fluidbox_prototypes(entity, positi
 end
 
 --- Look at the three possible locations for another underground or entity to connect to
+--- Every candidate is judged by its connections, so junctions and oversized pipes
+--- answer for themselves rather than being assumed to look like a vanilla underground.
 ---@param surface LuaSurface
 ---@param underground_position MapPosition
 ---@param neighbors_directions { pos: Vector, dir: defines.direction }[]
@@ -161,19 +173,25 @@ local function find_connection_neighbor(
         -- filtered search quality is a filter of its own, and omitting it matches
         -- everything, which is what we want: quality has no bearing on whether two
         -- pipes can join.
-        for _, neighbor_entity in pairs(surface.find_entities_filtered{
-            name = underground_entity_name, position = candidate_pos })
-        do
-            if neighbor_entity.direction == neighbor_candidate.dir then
-                return true
-            end
-        end
-        -- check for a matching underground pipe ghost, likewise of any quality
-        for _, neighbor_ghost in pairs(surface.find_entities_filtered{
-            ghost_name = underground_entity_name, position = candidate_pos })
-        do
-            if neighbor_ghost.direction == neighbor_candidate.dir then
-                return true
+        --
+        -- Whether it faces us is asked of its connections, not of its direction. A
+        -- direction tells you which way a vanilla underground opens, because vanilla
+        -- puts the opening on the side the entity faces. Pipe Plus's T junction keeps
+        -- the underground connection facing back like vanilla but opens east and west
+        -- only, so matching on direction had the mod bridging the one side it has no
+        -- connection on. Its X junction does open that way and still connects.
+        for _, matching in ipairs({
+            surface.find_entities_filtered{
+                name = underground_entity_name, position = candidate_pos },
+            surface.find_entities_filtered{
+                ghost_name = underground_entity_name, position = candidate_pos },
+        }) do
+            for _, neighbor_entity in pairs(matching) do
+                if opens_onto(neighbor_entity, pipe_position,
+                    pipe_connection_categories(pipe_entity_name))
+                then
+                    return true
+                end
             end
         end
         -- check for a matching non-pipe entity with a fluidbox connection
@@ -187,8 +205,7 @@ local function find_connection_neighbor(
             if  ( entity_type ~= "pipe" and entity_type ~= "pipe-to-ground"
                 ) and fluid_storage_count(candidate_entity) > 0
             then
-                if should_place_based_on_neighbor_fluidbox_prototypes(
-                    candidate_entity, pipe_position,
+                if opens_onto(candidate_entity, pipe_position,
                     pipe_connection_categories(pipe_entity_name))
                 then
                     return true
@@ -202,7 +219,7 @@ end
 
 neighbors.directions_to_neighbors = directions_to_neighbors
 neighbors.entity_type_or_ghost_type = entity_type_or_ghost_type
-neighbors.should_place_based_on_neighbor_fluidbox_prototypes = should_place_based_on_neighbor_fluidbox_prototypes
+neighbors.opens_onto = opens_onto
 neighbors.pipe_connection_categories = pipe_connection_categories
 neighbors.connection_categories_intersect = connection_categories_intersect
 neighbors.find_connection_neighbor = find_connection_neighbor

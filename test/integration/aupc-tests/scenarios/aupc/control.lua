@@ -539,6 +539,48 @@ local function fixture_issue_19_blueprint()
     end)
 end
 
+--- Issue #15, with Pipe Plus's two junction undergrounds rebuilt from its pipe.lua.
+--- Both keep the vanilla underground connection; the T opens east and west only, the
+--- X also opens the way it faces. So the pair of T's must be left alone and the pair
+--- of X's must still be joined -- the fix is not "ignore junctions".
+local function fixture_junction(name, label, expect_connector)
+    begin(label)
+    step("paint refined concrete and stock " .. name, function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [name] = 10 }
+        local proto = prototypes.entity[name]
+        local openings = {}
+        for index = 1, #proto.fluidbox_prototypes do
+            for _, connection in pairs(proto.fluidbox_prototypes[index].pipe_connections) do
+                openings[#openings + 1] = connection.connection_type
+            end
+        end
+        note("connection types: " .. table.concat(openings, ","))
+    end)
+    step("build junction A, facing south", function()
+        build_real(name, world.a, defines.direction.south)
+    end)
+    step("confirm nothing yet, then build junction B facing north", function()
+        check(pipe_at_gap() == nil, "a pipe appeared before the second junction existed")
+        build_real(name, world.b, defines.direction.north)
+    end)
+    step("check whether the gap was bridged", function()
+        local pipe = pipe_at_gap()
+        note("at the gap: " .. (pipe and pipe.name or "nothing") ..
+             ", pipes left: " .. count(PIPE))
+        if expect_connector then
+            check(pipe ~= nil, "the junction opens onto the gap but got no connector")
+            check(count(PIPE) == 9, "expected one pipe spent, inventory holds " .. count(PIPE))
+        else
+            check(pipe == nil,
+                "a pipe was wedged onto a side the junction has no connection on")
+            check(ghost_at_gap() == nil,
+                "a ghost was wedged onto a side the junction has no connection on")
+            check(count(PIPE) == 10, "a pipe was spent, inventory holds " .. count(PIPE))
+        end
+    end)
+end
+
 --- Warptorio's warp foundation: buildable ground naming empty-space as its cover.
 --- The mod used to hand that straight to can_place_entity as a tile ghost and die on
 --- "empty-space can not be part a tile ghost".
@@ -1533,6 +1575,10 @@ fixture_quality_substitution()
 fixture_quality_cover_tile()
 fixture_covered_ground()
 fixture_warp_foundation()
+fixture_junction("aupc-tests-t-junction",
+    "a T junction is not bridged on the side it has no connection on", false)
+fixture_junction("aupc-tests-x-junction",
+    "an X junction is still bridged, because it opens that way", true)
 fixture_issue_19_blueprint()
 fixture_unghostable_cover()
 fixture_ice_gap_with_cover()

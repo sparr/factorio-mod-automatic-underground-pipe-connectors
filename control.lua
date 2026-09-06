@@ -105,6 +105,17 @@ local function on_built_entity(event)
         underground_position.x + pipe_position_delta[1],
         underground_position.y + pipe_position_delta[2]
     }
+    -- The underground just placed has to open onto that tile as well. A vanilla one
+    -- always does, since it opens on the side it faces, which is the assumption the
+    -- tile was derived from. Pipe Plus's T junction faces that way while opening east
+    -- and west only, so without asking, the mod bridges the one side it cannot use.
+    if not neighbors.opens_onto(
+        entity, pipe_position, neighbors.pipe_connection_categories(pipe_entity_name))
+    then
+        -- bail out because what we just placed does not open onto the gap
+        return
+    end
+
     local found_neighbor = neighbors.find_connection_neighbor(
         underground_surface, underground_position, neighbors_directions,
         underground_entity_name, pipe_position, pipe_entity_name )

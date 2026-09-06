@@ -82,3 +82,61 @@ local unghostable = {
 }
 
 data:extend{ warp, unghostable }
+
+--- Pipe Plus's T and X junction undergrounds, copied from its pipe.lua (issue #15).
+--- Both keep the vanilla underground connection facing south. The T opens east and
+--- west above ground and nowhere else; the X adds north.
+---
+--- North is the whole problem. A vanilla underground opens on the side it faces, so
+--- "the tile ahead" and "the tile it opens onto" are the same tile, and the mod has
+--- always taken the first as a stand-in for the second. For the T they are different
+--- tiles: ahead is a side it does not open onto at all. The X still opens there, so it
+--- must keep connecting -- that is what stops the fix from being "ignore junctions".
+local util = require("util")
+
+local function junction(name, connections)
+    local entity = util.table.deepcopy(data.raw["pipe-to-ground"]["pipe-to-ground"])
+    entity.name = name
+    entity.minable = { mining_time = 0.1, result = name }
+    entity.next_upgrade = nil
+    entity.fast_replaceable_group = nil
+    entity.fluid_box.pipe_connections = connections
+    return entity,
+        {
+            type = "item",
+            name = name,
+            icon = "__base__/graphics/icons/pipe-to-ground.png",
+            subgroup = "energy-pipe-distribution",
+            order = "z[aupc-tests]-" .. name,
+            place_result = name,
+            stack_size = 50,
+        },
+        -- the mod pairs an underground with a pipe by reading recipes, so it needs one
+        {
+            type = "recipe",
+            name = name,
+            enabled = true,
+            ingredients = { { type = "item", name = "pipe", amount = 5 } },
+            results = { { type = "item", name = name, amount = 2 } },
+        }
+end
+
+local UNDERGROUND_SOUTH = {
+    connection_type = "underground",
+    direction = defines.direction.south,
+    position = { 0, 0 },
+    max_underground_distance = 10,
+}
+
+data:extend{ junction("aupc-tests-t-junction", {
+    { direction = defines.direction.east, position = { 0, 0 } },
+    UNDERGROUND_SOUTH,
+    { direction = defines.direction.west, position = { 0, 0 } },
+}) }
+
+data:extend{ junction("aupc-tests-x-junction", {
+    { direction = defines.direction.north, position = { 0, 0 } },
+    UNDERGROUND_SOUTH,
+    { direction = defines.direction.east, position = { 0, 0 } },
+    { direction = defines.direction.west, position = { 0, 0 } },
+}) }

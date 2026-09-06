@@ -40,26 +40,32 @@ describe("entity_type_or_ghost_type", function()
     end)
 end)
 
-describe("should_place_based_on_neighbor_fluidbox_prototypes", function()
+describe("opens_onto", function()
     local function entity_connecting_to(x, y)
         return support.fluid_entity{ { { target_position = { x = x, y = y } } } }
     end
 
     it("matches a connection aimed at the gap", function()
-        assert.is_true(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+        assert.is_true(neighbors.opens_onto(
             entity_connecting_to(10.5, 19.5), PIPE_POSITION, VANILLA))
     end)
 
     it("snaps a slightly offset connection onto the gap", function()
         -- some mods place connections at offsets like .04 and .07
-        assert.is_true(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+        assert.is_true(neighbors.opens_onto(
             entity_connecting_to(10.46, 19.54), PIPE_POSITION, VANILLA))
     end)
 
+    it("ignores a buried connection reaching the same tile", function()
+        local buried = support.fluid_entity{ {
+            { connection_type = "underground", target_position = { x = 10.5, y = 19.5 } } } }
+        assert.is_false(neighbors.opens_onto(buried, PIPE_POSITION, VANILLA))
+    end)
+
     it("does not stretch to a connection aimed somewhere else", function()
-        assert.is_false(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+        assert.is_false(neighbors.opens_onto(
             entity_connecting_to(10.2, 19.5), PIPE_POSITION, VANILLA))
-        assert.is_false(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+        assert.is_false(neighbors.opens_onto(
             entity_connecting_to(11.5, 19.5), PIPE_POSITION, VANILLA))
     end)
 end)
@@ -91,15 +97,40 @@ describe("connection categories", function()
     it("refuses a geometrically aligned connection in the wrong category", function()
         local entity = support.fluid_entity{
             { { target_position = { x = 10.5, y = 19.5 }, connection_category = { "ht-pipes" } } } }
-        assert.is_false(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+        assert.is_false(neighbors.opens_onto(
             entity, PIPE_POSITION, VANILLA))
         -- and the same geometry with a matching category still connects
         local same_tier = support.fluid_entity{
             { { target_position = { x = 10.5, y = 19.5 }, connection_category = { "default" } } } }
-        assert.is_true(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+        assert.is_true(neighbors.opens_onto(
             same_tier, PIPE_POSITION, VANILLA))
     end)
 end)
+
+--- A vanilla-shaped underground: one normal connection on the side it faces and an
+--- underground one behind it. `opens` overrides where the normal one points, which is
+--- how Pipe Plus's junctions differ.
+local VECTORS = {
+    [defines.direction.north] = { 0, -1 },
+    [defines.direction.east]  = { 1, 0 },
+    [defines.direction.south] = { 0, 1 },
+    [defines.direction.west]  = { -1, 0 },
+}
+
+local function underground(fields, opens)
+    local position, direction = fields.position, fields.direction
+    local connections = {}
+    for _, facing in ipairs(opens or { direction }) do
+        local vector = VECTORS[facing]
+        connections[#connections + 1] = { connection_type = "normal", target_position =
+            { x = position.x + vector[1], y = position.y + vector[2] } }
+    end
+    -- the buried run, pointing back the way it came
+    local back = VECTORS[(direction + 8) % 16]
+    connections[#connections + 1] = { connection_type = "underground", target_position =
+        { x = position.x + back[1] * 2, y = position.y + back[2] * 2 } }
+    return support.with_fluid_connections(fields, { connections })
+end
 
 describe("find_connection_neighbor", function()
     it("finds nothing in an empty area", function()
@@ -109,16 +140,16 @@ describe("find_connection_neighbor", function()
 
     it("finds an underground two ahead facing back", function()
         local found = look{
-            { name = UNDERGROUND, type = UNDERGROUND,
-              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
+            underground({ name = UNDERGROUND, type = UNDERGROUND,
+              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_true(found)
     end)
 
     it("finds an underground around a corner", function()
         local found = look{
-            { name = UNDERGROUND, type = UNDERGROUND,
-              direction = defines.direction.east, position = { x = 9.5, y = 19.5 } },
+            underground({ name = UNDERGROUND, type = UNDERGROUND,
+              direction = defines.direction.east, position = { x = 9.5, y = 19.5 } }),
         }
         assert.is_true(found)
     end)
@@ -127,44 +158,85 @@ describe("find_connection_neighbor", function()
     -- the search used to skip every non-normal neighbour and place nothing at all
     it("finds an underground of a quality other than normal", function()
         local found = look{
-            { name = UNDERGROUND, type = UNDERGROUND, quality = "uncommon",
-              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
+            underground({ name = UNDERGROUND, type = UNDERGROUND, quality = "uncommon",
+              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_true(found)
     end)
 
     it("finds a ghost partner of a quality other than normal", function()
         local found = look{
-            { name = "entity-ghost", type = "entity-ghost", ghost_name = UNDERGROUND,
+            underground({ name = "entity-ghost", type = "entity-ghost", ghost_name = UNDERGROUND,
               ghost_type = UNDERGROUND, quality = "legendary",
-              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
+              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_true(found)
     end)
 
     it("still respects direction for a non-normal neighbour", function()
         local found = look{
-            { name = UNDERGROUND, type = UNDERGROUND, quality = "rare",
-              direction = defines.direction.north, position = { x = 10.5, y = 18.5 } },
+            underground({ name = UNDERGROUND, type = UNDERGROUND, quality = "rare",
+              direction = defines.direction.north, position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_false(found)
     end)
 
     it("ignores an underground in the right place facing the wrong way", function()
         local found = look{
-            { name = UNDERGROUND, type = UNDERGROUND,
-              direction = defines.direction.north, position = { x = 10.5, y = 18.5 } },
+            underground({ name = UNDERGROUND, type = UNDERGROUND,
+              direction = defines.direction.north, position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_false(found)
     end)
 
     it("finds a ghost partner", function()
         local found = look{
-            { name = "entity-ghost", type = "entity-ghost", ghost_name = UNDERGROUND,
+            underground({ name = "entity-ghost", type = "entity-ghost", ghost_name = UNDERGROUND,
               ghost_type = UNDERGROUND, direction = defines.direction.south,
-              position = { x = 10.5, y = 18.5 } },
+              position = { x = 10.5, y = 18.5 } }),
         }
         assert.is_true(found)
+    end)
+
+    -- Pipe Plus, issue #15. Its T junction keeps the vanilla underground connection
+    -- but opens east and west only, so the tile a vanilla underground would open onto
+    -- is reached by the buried run alone. Its X junction adds the opening back.
+    describe("junction undergrounds", function()
+        local function junction(connections)
+            return support.with_fluid_connections(
+                { name = UNDERGROUND, type = UNDERGROUND,
+                  direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
+                { connections })
+        end
+
+        it("refuses a T junction, which only reaches the gap underground", function()
+            assert.is_false(look{ junction{
+                { connection_type = "normal", target_position = { x = 11.5, y = 18.5 } },
+                { connection_type = "normal", target_position = { x = 9.5, y = 18.5 } },
+                { connection_type = "underground", target_position = { x = 10.5, y = 19.5 } },
+            } })
+        end)
+
+        -- the opening that matters is second in the list, not first
+        it("accepts an X junction, which does open onto the gap", function()
+            assert.is_true(look{ junction{
+                { connection_type = "normal", target_position = { x = 11.5, y = 18.5 } },
+                { connection_type = "normal", target_position = { x = 10.5, y = 19.5 } },
+                { connection_type = "normal", target_position = { x = 9.5, y = 18.5 } },
+                { connection_type = "underground", target_position = { x = 10.5, y = 17.5 } },
+            } })
+        end)
+
+        it("scans every fluid storage, not just the first", function()
+            local entity = support.with_fluid_connections(
+                { name = UNDERGROUND, type = UNDERGROUND,
+                  direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
+                {
+                    { { connection_type = "normal", target_position = { x = 11.5, y = 18.5 } } },
+                    { { connection_type = "normal", target_position = { x = 10.5, y = 19.5 } } },
+                })
+            assert.is_true(look{ entity })
+        end)
     end)
 
     it("connects to a non-pipe entity whose fluidbox points at the gap", function()
