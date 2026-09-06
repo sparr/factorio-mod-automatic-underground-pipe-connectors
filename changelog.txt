@@ -24,6 +24,9 @@ Date: ????
     - Pair an underground with a pipe that can actually join it. A recipe listing more
       than one pipe used to get whichever came first, which under Pyanodons is a plain
       pipe that cannot connect to a niobium-tier Advanced Fluid Handling underground
+    - Refuse a cover tile that could never be laid down, rather than crashing on it.
+      Warptorio names empty-space as the cover for every tile it makes destructible,
+      and asking the game for a ghost of that is an error, not an answer
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05

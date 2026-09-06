@@ -486,6 +486,62 @@ local function fixture_quality_cover_tile()
     end)
 end
 
+--- Warptorio's warp foundation: buildable ground naming empty-space as its cover.
+--- The mod used to hand that straight to can_place_entity as a tile ghost and die on
+--- "empty-space can not be part a tile ghost".
+local function fixture_warp_foundation()
+    begin("buildable ground naming an unplaceable cover tile still gets a real pipe")
+    local TILE = "aupc-tests-warp-foundation"
+    step("paint the patch with warp-foundation-shaped ground and stock pipes", function()
+        paint(TILE)
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        check(tile_at_gap() == TILE, "setup: the gap is " .. tile_at_gap() .. ", not " .. TILE)
+        local cover = prototypes.tile[TILE].default_cover_tile
+        check(cover ~= nil and cover.name == "empty-space",
+            "setup: the test tile does not name empty-space as its cover")
+    end)
+    step("build underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south)
+    end)
+    step("build underground B facing north", function()
+        build_real(UNDERGROUND, world.b, defines.direction.north)
+    end)
+    step("check a real pipe filled the gap and nothing was covered", function()
+        check(pipe_at_gap() ~= nil, "no pipe was placed in the gap")
+        check(ghost_at_gap() == nil, "a ghost was placed instead of a real pipe")
+        check(tile_at_gap() == TILE, "the ground was changed to " .. tile_at_gap())
+        check(#tile_ghosts_at_gap() == 0, "an unnecessary tile ghost was placed")
+    end)
+end
+
+--- The same unplaceable cover, but the gap is ground a pipe cannot sit on, so the mod
+--- genuinely goes looking for a cover tile. There is no answer here, and the only
+--- correct behaviour is to leave the gap alone rather than take the game down.
+local function fixture_unghostable_cover()
+    begin("an unplaceable cover tile is refused, not crashed on")
+    local TILE = "aupc-tests-unghostable-gap"
+    step("paint refined concrete with one tile of unbuildable ground in the gap", function()
+        paint("refined-concrete")
+        paint(TILE, { left = world.left + 6, top = 5, width = 1, height = 1 })
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = 10 }
+        check(tile_at_gap() == TILE, "setup: the gap is " .. tile_at_gap() .. ", not " .. TILE)
+    end)
+    step("build underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south)
+    end)
+    step("build underground B facing north", function()
+        build_real(UNDERGROUND, world.b, defines.direction.north)
+    end)
+    step("check the mod declined the gap and survived", function()
+        note("gap tile: " .. tile_at_gap() ..
+             ", tile ghosts: " .. (#tile_ghosts_at_gap() > 0
+                and table.concat(tile_ghosts_at_gap(), "+") or "none"))
+        check(pipe_at_gap() == nil, "a pipe was placed on ground it cannot sit on")
+        check(count(PIPE) == 10, "a pipe was spent on a connector that could not be built")
+        check(tile_at_gap() == TILE, "the ground was changed to " .. tile_at_gap())
+    end)
+end
+
 --- Buildable ground that merely names a cover tile. The mod used to read
 --- default_cover_tile as "this ground needs covering", try to place a cover tile ghost
 --- the game refuses, and bail out, so nothing appeared at all. Reported against
@@ -1423,6 +1479,8 @@ fixture_quality_ghost()
 fixture_quality_substitution()
 fixture_quality_cover_tile()
 fixture_covered_ground()
+fixture_warp_foundation()
+fixture_unghostable_cover()
 fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()
 fixture_ghost_neighbour()

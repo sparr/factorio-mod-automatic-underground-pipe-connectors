@@ -69,6 +69,45 @@ describe("tile_blocks_entity", function()
     end)
 end)
 
+describe("cover_tile_for", function()
+    before_each(support.install_storage)
+
+    local function tile_with_cover(cover_name)
+        return { name = "made-up", collision_mask = { layers = { water_tile = true } },
+                 default_cover_tile = cover_name and tile_prototypes[cover_name] or nil }
+    end
+
+    it("takes the tile prototype's own cover when it can be laid down", function()
+        assert.equals(tile_prototypes["ice-platform"],
+            tiles.cover_tile_for(support.surface{}, force, tile_with_cover("ice-platform")))
+    end)
+
+    -- Warptorio names empty-space as the cover for every tile it makes destructible.
+    -- Handing that to can_place_entity is an error, not a false, so it must not get there.
+    it("refuses a cover tile no item can place", function()
+        assert.is_nil(
+            tiles.cover_tile_for(support.surface{}, force, tile_with_cover("empty-space")))
+    end)
+
+    it("refuses a cover tile barred from blueprints", function()
+        local barred = { name = "barred", collision_mask = { layers = {} },
+                         can_be_part_of_blueprint = false }
+        local target = { name = "made-up", collision_mask = { layers = { water_tile = true } },
+                         default_cover_tile = barred }
+        assert.is_nil(tiles.cover_tile_for(support.surface{}, force, target))
+    end)
+
+    it("falls through to the prototype default when the force override is unusable", function()
+        local surface = support.surface{ cover_tiles = { ["made-up"] = tile_prototypes["empty-space"] } }
+        assert.equals(tile_prototypes["ice-platform"],
+            tiles.cover_tile_for(surface, force, tile_with_cover("ice-platform")))
+    end)
+
+    it("returns nothing when the tile names no cover at all", function()
+        assert.is_nil(tiles.cover_tile_for(support.surface{}, force, tile_with_cover(nil)))
+    end)
+end)
+
 describe("tile_can_cover", function()
     before_each(support.install_storage)
 

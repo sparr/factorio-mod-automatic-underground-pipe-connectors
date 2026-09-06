@@ -20,14 +20,32 @@ local function tile_item_name(tile_name)
     return cover_item_name
 end
 
+--- Could this tile exist as a tile ghost at all? Some cannot, and asking
+--- can_place_entity about one is an error rather than a false: Warptorio names
+--- empty-space as the cover for every tile it makes destructible, and the engine
+--- answers "empty-space can not be part a tile ghost" by taking the mod down. A tile
+--- no item places could never be built from a ghost either, so both are asked here.
+---@param tile_prototype LuaTilePrototype?
+---@return boolean
+local function tile_can_be_ghosted(tile_prototype)
+    if not tile_prototype then return false end
+    if tile_prototype.can_be_part_of_blueprint == false then return false end
+    return tile_item_name(tile_prototype.name) ~= false
+end
+
 --- Find the tile that covers another tile, if any.
---- A per-force override set by another mod wins over the tile prototype's own default.
+--- A per-force override set by another mod wins over the tile prototype's own default,
+--- but only while it names something that could actually be laid down.
 ---@param surface LuaSurface
 ---@param force LuaForce
 ---@param tile_prototype LuaTilePrototype
 ---@return LuaTilePrototype?
 local function cover_tile_for(surface, force, tile_prototype)
-    return surface.get_default_cover_tile(force, tile_prototype) or tile_prototype.default_cover_tile
+    local override = surface.get_default_cover_tile(force, tile_prototype)
+    if tile_can_be_ghosted(override) then return override end
+    local default_cover = tile_prototype.default_cover_tile
+    if tile_can_be_ghosted(default_cover) then return default_cover end
+    return nil
 end
 
 --- Is this tile in the way of an entity, so that something has to be laid over it first?
@@ -100,6 +118,7 @@ local function find_melt_cover_tile(surface, force, target_tile_prototype, under
     local function usable(candidate)
         return candidate ~= nil
             and not candidate.collision_mask.layers.meltable
+            and tile_can_be_ghosted(candidate)
             and tile_can_cover(candidate, target_tile_prototype)
     end
 
@@ -160,6 +179,7 @@ local function restore_tile_state(surface, tile_state, correct_tiles)
 end
 
 tiles.tile_item_name = tile_item_name
+tiles.tile_can_be_ghosted = tile_can_be_ghosted
 tiles.cover_tile_for = cover_tile_for
 tiles.tile_blocks_entity = tile_blocks_entity
 tiles.tile_can_cover = tile_can_cover

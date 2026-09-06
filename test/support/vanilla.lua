@@ -19,6 +19,10 @@ return {
                                            doodad=true, floor=true},
                                  default_cover = "landfill" },
         -- tile_collision_masks.ground()
+        -- no item places this one, and the engine refuses to make a tile ghost of it
+        ["empty-space"]      = { layers = {ground_tile=true, water_tile=true, empty_space=true,
+                                           resource=true, floor=true, item=true, object=true,
+                                           player=true, doodad=true} },
         ["grass-1"]          = { layers = {ground_tile=true} },
         ["concrete"]         = { layers = {ground_tile=true}, item = "concrete" },
         ["refined-concrete"] = { layers = {ground_tile=true}, item = "refined-concrete" },
