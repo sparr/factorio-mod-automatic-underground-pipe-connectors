@@ -64,6 +64,43 @@ describe("should_place_based_on_neighbor_fluidbox_prototypes", function()
     end)
 end)
 
+describe("connection categories", function()
+    it("lets a connection through when both sides share a category", function()
+        assert.is_true(neighbors.connection_categories_intersect({ default = true }, { "default" }))
+    end)
+
+    it("rejects a connection whose categories are disjoint", function()
+        -- a tiered-fluid mod puts higher tiers in their own category, and a
+        -- tier-1 pipe placed against one would join nothing
+        assert.is_false(neighbors.connection_categories_intersect({ default = true }, { "ht-pipes" }))
+    end)
+
+    it("accepts when any one category matches", function()
+        assert.is_true(neighbors.connection_categories_intersect(
+            { default = true, ["ht-pipes"] = true }, { "niobium-pipe", "ht-pipes" }))
+    end)
+
+    it("stays permissive when the neighbour declares none", function()
+        assert.is_true(neighbors.connection_categories_intersect({ default = true }, nil))
+    end)
+
+    it("stays permissive when the pipe declares none", function()
+        assert.is_true(neighbors.connection_categories_intersect({}, { "ht-pipes" }))
+    end)
+
+    it("refuses a geometrically aligned connection in the wrong category", function()
+        local entity = support.fluid_entity{
+            { { target_position = { x = 10.5, y = 19.5 }, connection_category = { "ht-pipes" } } } }
+        assert.is_false(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+            entity, PIPE_POSITION, VANILLA))
+        -- and the same geometry with a matching category still connects
+        local same_tier = support.fluid_entity{
+            { { target_position = { x = 10.5, y = 19.5 }, connection_category = { "default" } } } }
+        assert.is_true(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
+            same_tier, PIPE_POSITION, VANILLA))
+    end)
+end)
+
 describe("find_connection_neighbor", function()
     it("finds nothing in an empty area", function()
         local found = look{}

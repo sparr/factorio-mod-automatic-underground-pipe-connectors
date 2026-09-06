@@ -85,6 +85,15 @@ function support.with_fluid_connections(entity, connections_per_index)
     entity.get_fluid_box_pipe_connections = function(index)
         return connections_per_index[index] or {}
     end
+    -- connection_category lives on the prototype definition, not the runtime
+    -- connection, so a connection carrying one is mirrored over to this side
+    entity.get_fluid_box_prototype = function(index)
+        local connections = {}
+        for i, connection in ipairs(connections_per_index[index] or {}) do
+            connections[i] = { connection_category = connection.connection_category }
+        end
+        return { object_name = "LuaFluidBoxPrototype", pipe_connections = connections }
+    end
     return entity
 end
 
