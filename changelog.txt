@@ -1,6 +1,10 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.1
 Date: ????
+  Features:
+    - New per-player setting for when you have no pipe of the quality you just placed:
+      off, the default, leaves a ghost as before; on, the nearest quality you do have
+      is spent instead, ties going to the lower one. Cover tiles follow the same rule
   Changes:
     - Connectors are a ghost or not based on your own placement, not the neighbour's
   Bugfixes:

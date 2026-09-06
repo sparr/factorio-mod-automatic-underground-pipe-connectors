@@ -75,6 +75,19 @@ local function tile_can_cover(cover_tile_prototype, target_tile_prototype)
     return true
 end
 
+--- Does the player have this item at all, in any quality? Only the choice of which
+--- tile to use rides on this, not which stack gets spent, so quality is irrelevant
+--- and get_item_count would wrongly answer about normal quality alone.
+---@param inventory LuaInventory
+---@param item_name string
+---@return boolean
+local function carries_any_quality(inventory, item_name)
+    for _, count in pairs(inventory.get_item_quality_counts(item_name)) do
+        if count > 0 then return true end
+    end
+    return false
+end
+
 --- Find a tile to cover a meltable tile with, so that a pipe can sit on it.
 --- Nothing in the prototypes nominates one, so fall back through increasingly weak guesses.
 ---@param surface LuaSurface
@@ -110,7 +123,7 @@ local function find_melt_cover_tile(surface, force, target_tile_prototype, under
     for candidate_name, candidate in pairs(prototypes.tile) do
         if usable(candidate) then
             local candidate_item_name = tile_item_name(candidate_name)
-            if candidate_item_name and inventory and inventory.get_item_count(candidate_item_name) > 0 then
+            if candidate_item_name and inventory and carries_any_quality(inventory, candidate_item_name) then
                 if not carried_tile_prototype or candidate_name < carried_tile_prototype.name then
                     carried_tile_prototype = candidate
                 end

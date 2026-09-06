@@ -191,17 +191,61 @@ function support.surface(opts)
     }
 end
 
+--- `counts` is item name to count, which means normal quality, or item name to a
+--- table of quality name to count. Same trap as the entity side: a bare item name
+--- is an ItemWithQualityID, so it asks about normal quality and nothing else.
 function support.inventory(counts)
-    counts = counts or {}
+    local store = {}
+    for name, value in pairs(counts or {}) do
+        store[name] = {}
+        if type(value) == "table" then
+            for quality_name, count in pairs(value) do store[name][quality_name] = count end
+        else
+            store[name].normal = value
+        end
+    end
+
+    local function quality_name(quality)
+        return type(quality) == "table" and quality.name or quality
+    end
+    local function id_name(id) return type(id) == "table" and id.name or id end
+    local function id_quality(id)
+        return type(id) == "table" and quality_name(id.quality) or nil
+    end
+    local function get(name, quality) return (store[name] or {})[quality] or 0 end
+    local function set(name, quality, count)
+        store[name] = store[name] or {}
+        store[name][quality] = count
+    end
+
     return {
-        counts = counts,
-        get_item_count = function(name) return counts[name] or 0 end,
-        find_item_stack = function(name)
-            if (counts[name] or 0) > 0 then return { name = name } end
+        store = store,
+        get_item_count = function(item)
+            return get(id_name(item), id_quality(item) or "normal")
+        end,
+        -- quality is the key here, not a filter, so this one sees every quality
+        get_item_quality_counts = function(item_name)
+            local result = {}
+            for quality, count in pairs(store[item_name] or {}) do
+                if count > 0 then result[quality] = count end
+            end
+            return result
+        end,
+        find_item_stack = function(item)
+            local name, quality = id_name(item), id_quality(item) or "normal"
+            if get(name, quality) > 0 then
+                return { name = name, quality = { name = quality } }
+            end
             return nil
         end,
-        remove = function(stack) counts[stack.name] = (counts[stack.name] or 0) - (stack.count or 1) end,
-        insert = function(stack) counts[stack.name] = (counts[stack.name] or 0) + (stack.count or 1) end,
+        remove = function(stack)
+            local name, quality = id_name(stack), id_quality(stack) or "normal"
+            set(name, quality, get(name, quality) - (stack.count or 1))
+        end,
+        insert = function(stack)
+            local name, quality = id_name(stack), id_quality(stack) or "normal"
+            set(name, quality, get(name, quality) + (stack.count or 1))
+        end,
     }
 end
 

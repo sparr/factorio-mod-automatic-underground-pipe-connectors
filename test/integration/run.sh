@@ -2,7 +2,11 @@
 # Integration tier: drive the real game and check what it actually did.
 #
 #   test/integration/run.sh                    # hidden Xvfb display, software GL
-#   AUPC_DISPLAY=:0 test/integration/run.sh    # your desktop, to watch
+#   AUPC_DISPLAY=:0 test/integration/run.sh    # your desktop, to watch#   AUPC_SUBSTITUTE_QUALITY=1 test/integration/run.sh   # the opposite setting
+#
+# The quality substitution setting cannot be flipped from inside the game, so the
+# fixtures that care about it assert whichever outcome matches the value they find.
+# Both answers need covering, which means running the suite twice.
 #
 # Only ever send synthetic input to the Xvfb display. Keys aimed at a window on
 # your own display can leave a modifier stuck down system wide.

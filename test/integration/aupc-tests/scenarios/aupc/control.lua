@@ -200,8 +200,22 @@ local function stock(items, quality)
     if not inventory then return end
     inventory.clear()
     for name, count in pairs(items) do
-        inventory.insert{ name = name, count = count, quality = quality }
+        if type(count) == "table" then
+            for quality_name, n in pairs(count) do
+                inventory.insert{ name = name, count = n, quality = quality_name }
+            end
+        else
+            inventory.insert{ name = name, count = count, quality = quality }
+        end
     end
+end
+
+--- The runtime-per-user setting deciding whether a quality the player did not ask
+--- for may be spent. A mod may read another mod's setting but not write it, so the
+--- harness sets this before launch (AUPC_SUBSTITUTE_QUALITY) and the fixtures below
+--- assert whichever outcome is right for the value they find.
+local function substituting()
+    return world.player.mod_settings["aupc-substitute-pipe-quality"].value
 end
 
 --- A bare item name means normal quality to the API, not "any quality", so a
@@ -385,6 +399,89 @@ local function fixture_quality_ghost()
             "the ghost is " .. (ghost and ghost.ghost_name or "absent") .. ", not a pipe")
         check(ghost and ghost.quality.name == "uncommon",
             "ghost quality is " .. (ghost and ghost.quality.name or "n/a") .. ", not uncommon")
+    end)
+end
+
+--- Only the wrong quality on hand. Two candidates, so when substitution is allowed
+--- this also pins the choice: rare is two levels from normal and three from legendary.
+local function fixture_quality_substitution()
+    begin("the wrong quality is spent only when the setting allows it")
+    step("paint, stock normal and legendary pipes with rare undergrounds", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = { normal = 5, legendary = 5 }, [UNDERGROUND] = { rare = 10 } }
+        note("substitution: " .. tostring(substituting()))
+        check(count(PIPE, "rare") == 0, "setup: a rare pipe would make this prove nothing")
+    end)
+    step("build rare underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south, nil, "rare")
+    end)
+    step("build rare underground B facing north", function()
+        build_real(UNDERGROUND, world.b, defines.direction.north, nil, "rare")
+    end)
+    step("check the outcome matches the setting", function()
+        local pipe = pipe_at_gap()
+        local ghost = world.surface.find_entities_filtered{
+            name = "entity-ghost", position = world.gap }[1]
+        note("connector: " .. (pipe and ("real " .. pipe.quality.name) or
+             (ghost and ("ghost " .. ghost.quality.name) or "nothing")))
+        note("pipes left: normal " .. count(PIPE, "normal") ..
+             ", legendary " .. count(PIPE, "legendary"))
+        if substituting() then
+            check(pipe ~= nil, "no real pipe was placed from the substitute stack")
+            check(pipe and pipe.quality.name == "normal",
+                "connector is " .. (pipe and pipe.quality.name or "n/a") ..
+                ", not the nearest quality")
+            check(count(PIPE, "normal") == 4,
+                "expected one normal pipe spent, inventory holds " .. count(PIPE, "normal"))
+            check(count(PIPE, "legendary") == 5,
+                "the legendary pipe was spent instead of the nearer normal one")
+        else
+            check(pipe == nil, "a pipe of the wrong quality was spent with the setting off")
+            check(ghost ~= nil, "no ghost was placed in the gap")
+            check(ghost and ghost.quality.name == "rare",
+                "ghost quality is " .. (ghost and ghost.quality.name or "n/a") .. ", not rare")
+            check(count(PIPE, "normal") == 5 and count(PIPE, "legendary") == 5,
+                "a pipe was spent with the setting off")
+        end
+    end)
+end
+
+--- The cover tile is bought under the same rule as the pipe.
+local function fixture_quality_cover_tile()
+    begin("the cover tile follows the same setting as the pipe")
+    step("paint refined concrete with an ice gap, carrying only uncommon cover tiles", function()
+        paint("refined-concrete")
+        paint("ice-rough", { left = world.left + 6, top = 5, width = 1, height = 1 })
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = { uncommon = 10 } }
+        note("substitution: " .. tostring(substituting()))
+        check(tile_at_gap() == "ice-rough", "setup: the gap is " .. tile_at_gap() .. ", not ice")
+        check(count("refined-concrete") == 0, "setup: normal cover tiles would mask the rule")
+    end)
+    step("build underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south)
+    end)
+    step("build underground B facing north", function()
+        build_real(UNDERGROUND, world.b, defines.direction.north)
+    end)
+    step("check the cover tile outcome matches the setting", function()
+        note("gap tile: " .. tile_at_gap())
+        note("uncommon cover tiles left: " .. count("refined-concrete", "uncommon"))
+        if substituting() then
+            check(same_tile(tile_at_gap(), "refined-concrete"),
+                "the meltable tile was not covered, it is still " .. tile_at_gap())
+            check(pipe_at_gap() ~= nil, "no pipe was placed on the covered ground")
+            check(ghost_at_gap() == nil, "a ghost was placed where a real pipe should fit")
+            check(count("refined-concrete", "uncommon") == 9,
+                "expected one uncommon cover tile spent, inventory holds " ..
+                count("refined-concrete", "uncommon"))
+        else
+            check(tile_at_gap() == "ice-rough",
+                "the ground was covered with a tile the player did not agree to spend")
+            check(pipe_at_gap() == nil, "a real pipe went down on uncovered meltable ground")
+            check(ghost_at_gap() == PIPE, "no pipe ghost was placed in the gap")
+            check(count("refined-concrete", "uncommon") == 10,
+                "an uncommon cover tile was spent with the setting off")
+        end
     end)
 end
 
@@ -1054,6 +1151,8 @@ end
 fixture_plain_ground()
 fixture_quality()
 fixture_quality_ghost()
+fixture_quality_substitution()
+fixture_quality_cover_tile()
 fixture_covered_ground()
 fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()

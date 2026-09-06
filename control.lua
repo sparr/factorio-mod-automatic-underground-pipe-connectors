@@ -1,5 +1,6 @@
 local util = require("util")
 local neighbors = require("lib.neighbors")
+local quality = require("lib.quality")
 local tiles = require("lib.tiles")
 local undo = require("lib.undo")
 
@@ -104,13 +105,19 @@ local function on_built_entity(event)
     -- one should not be charged for either, and there is nothing to run out of
     -- that would justify downgrading it to a ghost.
     local free_build = player.controller_type == defines.controllers.editor
+    -- Spending a quality the player did not ask for is their call, not ours
+    local substitute_quality = player.mod_settings["aupc-substitute-pipe-quality"].value
+    -- What we place is whatever we end up spending, which is normally the
+    -- underground's own quality and only differs when they let it
+    local connector_quality = placed_quality
     local pipe_stack --[[@type LuaItemStack?]]
 
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
     if not placing_ghost and not free_build then
         if inventory then
-            pipe_stack = inventory.find_item_stack{
-                name = pipe_item_name, quality = placed_quality }
+            pipe_stack = quality.find_stack_to_spend(
+                inventory, pipe_item_name, placed_quality, substitute_quality)
+            if pipe_stack then connector_quality = pipe_stack.quality end
             placing_ghost = not pipe_stack
         else
             placing_ghost = true
@@ -182,6 +189,8 @@ local function on_built_entity(event)
     local melt_tile
     ---@type string?
     local melt_tile_item_name
+    ---@type LuaQualityPrototype?
+    local melt_tile_item_quality
     if tile_proto_to_check_for_melt.collision_mask.layers.meltable then
         local underground_tile = underground_surface.get_tile( underground_position.x, underground_position.y )
         local melt_cover_tile_proto = tiles.find_melt_cover_tile(
@@ -194,8 +203,11 @@ local function on_built_entity(event)
         local cover_ghost = placing_ghost
         if not cover_ghost and not free_build then
             local cover_item_name = tiles.tile_item_name( melt_cover_tile_proto.name )
-            if cover_item_name and inventory and inventory.find_item_stack( cover_item_name ) then
+            local cover_stack = cover_item_name and inventory and quality.find_stack_to_spend(
+                inventory, cover_item_name, placed_quality, substitute_quality)
+            if cover_stack then
                 melt_tile_item_name = cover_item_name
+                melt_tile_item_quality = cover_stack.quality
             else
                 -- without the item the cover has to be a ghost, and a pipe can't sit on an uncovered meltable tile
                 cover_ghost = true
@@ -235,7 +247,7 @@ local function on_built_entity(event)
     local pipe_entity_definition = {
         name = placing_ghost and "entity-ghost" or pipe_entity_name,
         position = pipe_position,
-        quality = placed_quality,
+        quality = connector_quality,
         -- properties just for create_entity
         force = entity.force,
         player = event.player_index,
@@ -312,7 +324,7 @@ local function on_built_entity(event)
                 undo.restore_undo_state( player, undo_state_before_melt_tile )
             end
             if melt_tile_item_name and inventory then
-                inventory.insert({name=melt_tile_item_name, count=1})
+                inventory.insert({name=melt_tile_item_name, count=1, quality=melt_tile_item_quality})
             end
         end
     end
@@ -346,14 +358,14 @@ local function on_built_entity(event)
         placed_melt_tile = true
         if melt_tile_item_name and inventory then
             -- we only chose a real tile over a ghost because this item was in inventory
-            inventory.remove({name=melt_tile_item_name})
+            inventory.remove({name=melt_tile_item_name, count=1, quality=melt_tile_item_quality})
         end
     end
 
     if not placing_ghost and not free_build then
         -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
         if inventory then
-            inventory.remove({name=pipe_item_name, count=1, quality=placed_quality})
+            inventory.remove({name=pipe_item_name, count=1, quality=connector_quality})
         else
             player.print("Placed a pipe for free. This shouldn't happen. Please report a bug on "
                 .. "the Automatic Underground Pipe Connectors mod discussion page or github issue "
@@ -366,7 +378,7 @@ local function on_built_entity(event)
         -- the world changed under us between the checks above and now
         rollback()
         if not placing_ghost and not free_build and inventory then
-            inventory.insert({name=pipe_item_name, count=1, quality=placed_quality})
+            inventory.insert({name=pipe_item_name, count=1, quality=connector_quality})
         end
     end
 end

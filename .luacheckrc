@@ -25,6 +25,7 @@ stds.factorio = {
 exclude_files = { ".luarocks/**", "test/integration/env/**" }
 
 files["control.lua"].std = "lua52+factorio"
+files["settings.lua"].std = "lua52+factorio"
 files["lib/*.lua"].std = "lua52+factorio"
 files["test/**/*.lua"] = {
     std = "lua52+factorio+busted",

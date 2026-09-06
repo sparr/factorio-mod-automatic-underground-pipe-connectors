@@ -24,12 +24,33 @@ if [[ -n "${AUPC_FROM_ZIP:-}" ]]; then
     echo "mod under test: $(basename "$AUPC_FROM_ZIP")"
 else
     mkdir -p "$mods/automatic-underground-pipe-connectors"
-    for entry in info.json control.lua lib changelog.txt thumbnail.png; do
-        [[ -e "$root/$entry" ]] &&
-            ln -sfn "$root/$entry" "$mods/automatic-underground-pipe-connectors/$entry"
+    # Mirror what the package ships rather than a hand-kept list. A hand-kept one
+    # already went stale once: settings.lua and locale/ were missing here long
+    # after the mod needed them, and the setting simply did not exist in game.
+    # Unquoted glob skips dotfiles, so .git and .luacheckrc stay out on their own.
+    for path in "$root"/*; do
+        entry="$(basename "$path")"
+        case "$entry" in
+            test|*.zip) continue ;;
+        esac
+        ln -sfn "$path" "$mods/automatic-underground-pipe-connectors/$entry"
     done
     echo "mod under test: the working tree"
 fi
+# The substitution option cannot be flipped from inside the game: Factorio only
+# lets the owning player or the owning mod change a setting, and the scenario is
+# neither. So it is written here, before the game starts. rm -rf above already
+# cleared any previous file, which is what leaves the default in place.
+if [[ -n "${AUPC_SUBSTITUTE_QUALITY:-}" ]]; then
+    factorio="${AUPC_FACTORIO:-/home/sparr/Games/Steam/steamapps/common/Factorio/bin/x64/factorio}"
+    version="$("$factorio" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+    lua5.2 "$here/mod-settings.lua" "$mods/mod-settings.dat" \
+        aupc-substitute-pipe-quality true ${version:+"$version"}
+    echo "quality substitution: on"
+else
+    echo "quality substitution: off (the default)"
+fi
+
 ln -sfn "$here/aupc-tests" "$mods/aupc-tests"
 
 # The scenario cannot read environment variables, so the mode it should run in is
