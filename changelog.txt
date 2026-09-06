@@ -15,6 +15,9 @@ Date: ????
     - Connect undergrounds of any quality, and give the connector that same quality.
       The neighbour search could only ever see normal quality, so a pair of uncommon
       undergrounds got nothing at all
+    - Place a ghost connector under things you can build under, elevated rails and
+      Nullius wind turbines among them. Only an entity that really collides with the
+      pipe turns one away now, rather than any entity the guard did not recognise
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05

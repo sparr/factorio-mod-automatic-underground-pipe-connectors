@@ -1,4 +1,5 @@
 local util = require("util")
+local collision = require("lib.collision")
 local neighbors = require("lib.neighbors")
 local quality = require("lib.quality")
 local tiles = require("lib.tiles")
@@ -30,12 +31,18 @@ storage.tile_lookup = storage.tile_lookup or {}
 ---| LuaSurface.can_place_entity_param
 ---| LuaSurface.can_fast_replace_param
 
---- Entity types that share a tile without stopping a ghost being placed on it.
---- The build check types the engine offers are no help here: script_ghost ignores
---- entities altogether, while manual_ghost and blueprint_ghost bring along the rest
---- of their build rules and refuse placements that plainly do work. So this is a
---- list, and it errs towards letting the connector through: a character standing on
---- the gap is the case players hit, and markers and debris never obstruct anything.
+--- Entity types that share a tile without stopping a ghost being placed on it,
+--- *despite* colliding with the pipe. The build check types the engine offers are no
+--- help here: script_ghost ignores entities altogether, while manual_ghost and
+--- blueprint_ghost bring along the rest of their build rules and refuse placements
+--- that plainly do work. So this is a list, and it errs towards letting the connector
+--- through: a character standing on the gap is the case players hit, and markers and
+--- debris never obstruct anything.
+---
+--- Anything that does not collide with the pipe at all is handled by the mask test
+--- below and does not belong here. A list alone kept turning away entities you can
+--- freely build under -- elevated rails, and modded ones like Nullius wind turbines --
+--- because they were not names anybody had thought to add.
 local ghost_transparent_types = {
     ["character"] = true,
     ["tile-ghost"] = true,
@@ -76,6 +83,7 @@ local function on_built_entity(event)
 
     local lookup_entry = storage.pipe_lookup[underground_entity_name]
     if not lookup_entry then return end -- we don't know what pipe goes with this underground pipe, bail out
+    local pipe_prototype = prototypes.entity[lookup_entry.entity]
 
     local underground_surface = entity.surface
     local underground_direction = entity.direction
@@ -133,7 +141,7 @@ local function on_built_entity(event)
     -- check used to take the whole connector down with it.
     ---@type LuaTilePrototype?
     local cover_tile_proto
-    if tiles.tile_blocks_entity( existing_tile.prototype, prototypes.entity[pipe_entity_name] ) then
+    if tiles.tile_blocks_entity( existing_tile.prototype, pipe_prototype ) then
         cover_tile_proto = tiles.cover_tile_for( underground_surface, entity.force, existing_tile.prototype )
     end
     ---@type EntityEtc?
@@ -284,7 +292,8 @@ local function on_built_entity(event)
         local found_entities = underground_surface.find_entities(
             { pipe_entity_definition.position, pipe_entity_definition.position } )
         for _,found_entity in pairs(found_entities) do
-            if not ghost_transparent_types[found_entity.type] then
+            if not ghost_transparent_types[found_entity.type]
+            and collision.entity_blocks(found_entity, pipe_prototype) then
                 -- bail out because there's already something where we'd place a ghost
                 return
             end

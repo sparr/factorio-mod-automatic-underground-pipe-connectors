@@ -909,7 +909,7 @@ end
 ---@param blocker string? entity to stand on the gap, nil for the negative case
 ---@param label string
 ---@param expect_connector boolean
-local function fixture_gap_occupant(blocker, label, expect_connector)
+local function fixture_gap_occupant(blocker, label, expect_connector, direction)
     begin(label)
     step("paint refined concrete and stock pipes and undergrounds", function()
         paint("refined-concrete")
@@ -918,7 +918,8 @@ local function fixture_gap_occupant(blocker, label, expect_connector)
     end)
     step("put a " .. tostring(blocker) .. " on the gap", function()
         world.blocker = world.surface.create_entity{
-            name = blocker, position = world.gap, force = world.player.force }
+            name = blocker, position = world.gap, direction = direction,
+            force = world.player.force }
         check(world.blocker ~= nil, "could not place a " .. tostring(blocker) .. " on the gap")
     end)
     -- both ghosts, so the placement is a ghost and the occupancy guard is what
@@ -941,6 +942,39 @@ local function fixture_gap_occupant(blocker, label, expect_connector)
             check(ghost == nil,
                 "a ghost was placed on top of a " .. tostring(blocker) .. ", found " .. tostring(ghost))
         end
+        if world.blocker and world.blocker.valid then world.blocker.destroy() end
+    end)
+end
+
+--- An elevated rail passes overhead without touching the ground: its whole collision
+--- mask is the elevated_rail layer, which a pipe does not carry. The ghost case goes
+--- through the occupancy guard, this one through can_place_entity.
+local function fixture_elevated_rail_real()
+    begin("a real connector goes in under an elevated rail")
+    step("paint refined concrete, stock pipes, and run a rail over the gap", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        world.blocker = world.surface.create_entity{
+            name = "elevated-straight-rail", position = world.gap,
+            direction = defines.direction.east, force = world.player.force }
+        check(world.blocker ~= nil, "could not run an elevated rail over the gap")
+        local overhead = false
+        for _, e in pairs(world.surface.find_entities{ world.gap, world.gap }) do
+            if e == world.blocker then overhead = true end
+        end
+        check(overhead, "the rail does not actually overlap the gap, so this proves nothing")
+    end)
+    step("build underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south)
+    end)
+    step("build underground B facing north", function()
+        build_real(UNDERGROUND, world.b, defines.direction.north)
+    end)
+    step("check a real pipe went in under the rail", function()
+        check(pipe_at_gap() ~= nil, "no pipe was placed under the elevated rail")
+        check(ghost_at_gap() == nil, "a ghost was placed where a real pipe fits")
+        check(count(PIPE) == 9, "expected one pipe consumed, inventory holds " .. count(PIPE))
+        check(world.blocker and world.blocker.valid, "the elevated rail was destroyed")
         if world.blocker and world.blocker.valid then world.blocker.destroy() end
     end)
 end
@@ -1165,6 +1199,10 @@ fixture_fluid_neighbour("storage-tank")
 fixture_fluid_neighbour("storage-tank", true)
 fixture_gap_occupant("character", "a character on the gap does not block a ghost connector", true)
 fixture_gap_occupant("wooden-chest", "a real entity on the gap does block a ghost connector", false)
+fixture_gap_occupant("elevated-straight-rail",
+    "an elevated rail over the gap does not block a ghost connector", true,
+    defines.direction.east)
+fixture_elevated_rail_real()
 fixture_ocean_ghosts()
 fixture_undo()
 fixture_character()

@@ -1,4 +1,6 @@
 --- Choosing and placing the ground a connector pipe needs underneath it.
+local collision = require("lib.collision")
+
 local tiles = {}
 
 --- Find the item that places a tile, remembering the answer in `storage.tile_lookup`
@@ -37,11 +39,7 @@ end
 ---@param entity_prototype LuaEntityPrototype
 ---@return boolean
 local function tile_blocks_entity(tile_prototype, entity_prototype)
-    local entity_layers = entity_prototype.collision_mask.layers
-    for layer in pairs(tile_prototype.collision_mask.layers) do
-        if entity_layers[layer] then return true end
-    end
-    return false
+    return collision.masks_intersect(tile_prototype.collision_mask, entity_prototype.collision_mask)
 end
 
 --- Would the game let a player place `cover_tile_prototype` on top of `target_tile_prototype`?
