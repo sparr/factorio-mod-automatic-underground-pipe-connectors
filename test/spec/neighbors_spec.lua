@@ -3,6 +3,18 @@ support.install_defines()
 local neighbors = require("lib.neighbors")
 
 local UNDERGROUND = "pipe-to-ground"
+local PIPE = "pipe"
+--- vanilla puts every connection in {"default"}
+local VANILLA = { default = true }
+
+-- find_connection_neighbor reads the pipe's own categories out of prototypes
+_G.prototypes = {
+    entity = {
+        [PIPE] = { fluidbox_prototypes = {
+            { pipe_connections = { { connection_category = { "default" } } } },
+        } },
+    },
+}
 -- an underground at 10.5,20.5 pointing north puts its pipe at 10.5,19.5, and looks
 -- for a partner at 9.5,19.5 facing east, 10.5,18.5 facing south, or 11.5,19.5 facing west
 local UNDERGROUND_POSITION = { x = 10.5, y = 20.5 }
@@ -14,7 +26,8 @@ local function look(entities)
         UNDERGROUND_POSITION,
         neighbors.directions_to_neighbors[defines.direction.north],
         UNDERGROUND,
-        PIPE_POSITION)
+        PIPE_POSITION,
+        PIPE)
 end
 
 describe("entity_type_or_ghost_type", function()
@@ -34,20 +47,20 @@ describe("should_place_based_on_neighbor_fluidbox_prototypes", function()
 
     it("matches a connection aimed at the gap", function()
         assert.is_true(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
-            entity_connecting_to(10.5, 19.5), PIPE_POSITION))
+            entity_connecting_to(10.5, 19.5), PIPE_POSITION, VANILLA))
     end)
 
     it("snaps a slightly offset connection onto the gap", function()
         -- some mods place connections at offsets like .04 and .07
         assert.is_true(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
-            entity_connecting_to(10.46, 19.54), PIPE_POSITION))
+            entity_connecting_to(10.46, 19.54), PIPE_POSITION, VANILLA))
     end)
 
     it("does not stretch to a connection aimed somewhere else", function()
         assert.is_false(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
-            entity_connecting_to(10.2, 19.5), PIPE_POSITION))
+            entity_connecting_to(10.2, 19.5), PIPE_POSITION, VANILLA))
         assert.is_false(neighbors.should_place_based_on_neighbor_fluidbox_prototypes(
-            entity_connecting_to(11.5, 19.5), PIPE_POSITION))
+            entity_connecting_to(11.5, 19.5), PIPE_POSITION, VANILLA))
     end)
 end)
 

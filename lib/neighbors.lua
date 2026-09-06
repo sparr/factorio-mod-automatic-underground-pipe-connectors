@@ -58,16 +58,81 @@ local function fluid_box_pipe_connections(entity, index)
     return {}
 end
 
+--- The categories the pipe we would place can join on. Derived from prototypes, so
+--- it cannot change within a session; cached per pipe and rebuilt on load.
+---@type table<string, table<string, true>>
+local pipe_categories_cache = {}
+
+---@param pipe_entity_name string
+---@return table<string, true> categories
+local function pipe_connection_categories(pipe_entity_name)
+    local cached = pipe_categories_cache[pipe_entity_name]
+    if cached then return cached end
+    local categories = {}
+    local fluidbox_prototypes = prototypes.entity[pipe_entity_name].fluidbox_prototypes
+    for i = 1, fluidbox_prototypes and #fluidbox_prototypes or 0 do
+        local pipe_connections = fluidbox_prototypes[i].pipe_connections
+        for j = 1, pipe_connections and #pipe_connections or 0 do
+            for _, category in pairs(pipe_connections[j].connection_category or {}) do
+                categories[category] = true
+            end
+        end
+    end
+    pipe_categories_cache[pipe_entity_name] = categories
+    return categories
+end
+
+--- Whether the pipe we would place could actually join this connection. Permissive
+--- when either side declares nothing, so entities without categories behave as they
+--- always did.
+---@param pipe_categories table<string, true>
+---@param neighbor_categories string[]?
+---@return boolean
+local function connection_categories_intersect(pipe_categories, neighbor_categories)
+    if not neighbor_categories or not next(pipe_categories) then return true end
+    for i = 1, #neighbor_categories do
+        if pipe_categories[neighbor_categories[i]] then return true end
+    end
+    return false
+end
+
+--- The runtime PipeConnection carries no connection_category; only the prototype
+--- definition does, so the category for a matched connection is read from there.
+---@param entity LuaEntity
+---@param index integer fluid storage index
+---@param connection_index integer
+---@return string[]?
+local function connection_category_of(entity, index, connection_index)
+    local ok, prototype = pcall(entity.get_fluid_box_prototype, index)
+    -- a crafting machine's recipe-merged fluidbox answers with a list of prototypes
+    -- rather than one, and there is no single connection list to consult; stay
+    -- permissive rather than guess
+    if not ok or type(prototype) ~= "table" or prototype.object_name ~= "LuaFluidBoxPrototype" then
+        return nil
+    end
+    local connections = prototype.pipe_connections
+    local connection = connections and connections[connection_index]
+    return connection and connection.connection_category or nil
+end
+
 ---@param entity LuaEntity
 ---@param position MapPosition
+---@param pipe_categories table<string, true> categories of the pipe that would be placed
 ---@return boolean place
-local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position)
+local function should_place_based_on_neighbor_fluidbox_prototypes(entity, position, pipe_categories)
     for index = 1, fluid_storage_count(entity) do
-        for _, pipe_connection in pairs( fluid_box_pipe_connections(entity, index) ) do
+        local connections = fluid_box_pipe_connections(entity, index)
+        for j = 1, #connections do
+            local pipe_connection = connections[j]
             -- floor operation rounds to nearest 0.5 to mimic pipe connection snapping behavior
             if position[1] == math.floor( ( pipe_connection.target_position.x + 0.25 ) * 2 ) / 2 and
                position[2] == math.floor( ( pipe_connection.target_position.y + 0.25 ) * 2 ) / 2 then
-                return true
+                -- the geometry lines up; only connect if the categories say it could
+                if connection_categories_intersect(
+                    pipe_categories, connection_category_of(entity, index, j))
+                then
+                    return true
+                end
             end
         end
     end
@@ -80,9 +145,11 @@ end
 ---@param neighbors_directions { pos: Vector, dir: defines.direction }[]
 ---@param underground_entity_name string
 ---@param pipe_position MapPosition
+---@param pipe_entity_name string the pipe we would place, for its connection categories
 ---@return boolean place Found something worth connecting to
 local function find_connection_neighbor(
-    surface, underground_position, neighbors_directions, underground_entity_name, pipe_position)
+    surface, underground_position, neighbors_directions, underground_entity_name, pipe_position,
+    pipe_entity_name)
     for _, neighbor_candidate in pairs(neighbors_directions) do
         local candidate_pos = {
             underground_position.x + neighbor_candidate.pos[1],
@@ -113,7 +180,10 @@ local function find_connection_neighbor(
             if  ( entity_type ~= "pipe" and entity_type ~= "pipe-to-ground"
                 ) and fluid_storage_count(candidate_entity) > 0
             then
-                if should_place_based_on_neighbor_fluidbox_prototypes(candidate_entity, pipe_position) then
+                if should_place_based_on_neighbor_fluidbox_prototypes(
+                    candidate_entity, pipe_position,
+                    pipe_connection_categories(pipe_entity_name))
+                then
                     return true
                 end
             end
@@ -126,6 +196,8 @@ end
 neighbors.directions_to_neighbors = directions_to_neighbors
 neighbors.entity_type_or_ghost_type = entity_type_or_ghost_type
 neighbors.should_place_based_on_neighbor_fluidbox_prototypes = should_place_based_on_neighbor_fluidbox_prototypes
+neighbors.pipe_connection_categories = pipe_connection_categories
+neighbors.connection_categories_intersect = connection_categories_intersect
 neighbors.find_connection_neighbor = find_connection_neighbor
 
 return neighbors

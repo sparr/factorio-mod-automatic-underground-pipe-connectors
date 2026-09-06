@@ -83,7 +83,7 @@ local function on_built_entity(event)
     }
     local found_neighbor = neighbors.find_connection_neighbor(
         underground_surface, underground_position, neighbors_directions,
-        underground_entity_name, pipe_position )
+        underground_entity_name, pipe_position, pipe_entity_name )
     if not found_neighbor then
         -- bail out because there's nothing here worth connecting to
         return
