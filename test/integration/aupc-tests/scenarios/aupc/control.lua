@@ -992,6 +992,36 @@ local function restamp(area)
     return #entries
 end
 
+--- The same stamp, but driven straight from the API with the cursor empty.
+--- build_blueprint fires on_built_entity whenever by_player is given, so the mod
+--- hears about it exactly as it hears about a hand placement, while nothing is in
+--- the cursor to say a blueprint is involved.
+local function restamp_via_api(area)
+    local inventory = game.create_inventory(1)
+    inventory[1].set_stack{ name = "blueprint" }
+    inventory[1].create_blueprint{
+        surface = world.surface, force = world.player.force, area = area }
+    local entries = inventory[1].get_blueprint_entities() or {}
+
+    local placed, sum_x, sum_y = {}, 0, 0
+    for _, entity in pairs(world.surface.find_entities(area)) do
+        if entity.valid and entity.type ~= "character" then
+            placed[#placed + 1] = entity
+            sum_x, sum_y = sum_x + entity.position.x, sum_y + entity.position.y
+        end
+    end
+    local centre = #placed > 0 and { x = sum_x / #placed, y = sum_y / #placed }
+    for _, entity in ipairs(placed) do if entity.valid then entity.destroy() end end
+
+    if centre then
+        inventory[1].build_blueprint{
+            surface = world.surface, force = world.player.force,
+            position = centre, by_player = world.player }
+    end
+    inventory.destroy()
+    return #entries
+end
+
 --- A blueprint drawn with a deliberate gap between two facing undergrounds. Whatever
 --- the blueprint says is what the player asked for, so the mod has no business
 --- filling that gap in.
@@ -1029,6 +1059,56 @@ local function fixture_blueprint_gap()
              (#names > 0 and table.concat(names, "+") or "nothing"))
         check(#names == 0,
             "the mod filled a gap the blueprint drew deliberately: " .. table.concat(names, "+"))
+    end)
+end
+
+--- A known gap, pinned rather than fixed.
+---
+--- build_blueprint fires on_built_entity whenever by_player is given, so an API-driven
+--- stamp reaches the mod exactly as a hand placement does, while nothing in the cursor
+--- says a blueprint is involved. There is no creation tick on an entity to ask instead,
+--- and same-tick bookkeeping cannot stand in for one: the game creates all of a stamp's
+--- entities before raising any of their events, so the first underground already sees
+--- the second. Closing it properly means deferring every connector to the end of the
+--- tick, which would split the cover tile out of the player's undo item and make ctrl+z
+--- two steps for everybody, to fix a path only other mods take.
+---
+--- So this asserts what the mod does today, not what it ought to do. If it fails because
+--- the gap came back empty, something has fixed the gap: flip the check and delete this.
+local function fixture_blueprint_api_gap()
+    begin("a blueprint built through the API still gets a connector (known gap)")
+    step("paint, then lay two facing undergrounds without waking the mod", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        for _, spot in ipairs({ { world.a, defines.direction.south },
+                                { world.b, defines.direction.north } }) do
+            world.surface.create_entity{ name = UNDERGROUND, position = spot[1],
+                direction = spot[2], force = world.player.force, raise_built = true }
+        end
+        check(pipe_at_gap() == nil and ghost_at_gap() == nil,
+            "setup: something already filled the gap before the blueprint existed")
+    end)
+    step("capture them into a blueprint, clear the ground and build it through the API", function()
+        local area = { { world.a.x - 0.5, world.a.y - 0.5 }, { world.b.x + 0.5, world.b.y + 0.5 } }
+        local captured = restamp_via_api(area)
+        note("blueprint captured " .. captured .. " entities")
+        check(captured == 2, "the blueprint should hold exactly the two undergrounds")
+        check(not world.player.cursor_stack.valid_for_read,
+            "setup: a blueprint in the cursor would let the mod off the hook")
+    end)
+    step("record that the cursor check cannot see this one", function()
+        local patch = { { world.left, 0 }, { world.left + PATCH, PATCH } }
+        local undergrounds = world.surface.find_entities_filtered{
+            ghost_name = UNDERGROUND, area = patch }
+        check(#undergrounds == 2,
+            "expected the blueprint's two underground ghosts, found " .. #undergrounds)
+        if #undergrounds ~= 2 then return end
+        local names = occupants(in_front_of(undergrounds[1]))
+        note("between the undergrounds: " ..
+             (#names > 0 and table.concat(names, "+") or "nothing"))
+        check(#names > 0,
+            "the API stamp was left alone, so the known gap is closed: make this " ..
+            "fixture assert an empty gap instead")
     end)
 end
 
@@ -1359,6 +1439,7 @@ fixture_gap_occupant("elevated-straight-rail",
     defines.direction.east)
 fixture_elevated_rail_real()
 fixture_blueprint_gap()
+fixture_blueprint_api_gap()
 fixture_blueprint_fluid_neighbour()
 fixture_ocean_ghosts()
 fixture_undo()

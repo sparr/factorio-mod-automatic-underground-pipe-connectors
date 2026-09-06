@@ -9,6 +9,15 @@ local blueprint = {}
 --- blueprint stays in the cursor for the whole stamp, though, so every build it
 --- causes can be recognised from there -- the undergrounds and the machines that
 --- land beside them alike.
+---
+--- Known gap: a mod calling LuaItemStack.build_blueprint with by_player also fires
+--- on_built_entity, and the cursor holds whatever that player happened to have, so
+--- this says no and the connectors go in. Closing it would mean deferring every
+--- connector to the end of the tick, which splits the cover tile out of the player's
+--- undo item. The integration fixture "a blueprint built through the API still gets
+--- a connector" pins that behaviour deliberately. Passing raise_built instead of
+--- by_player fires script_raised_built, which the mod never subscribed to, so that
+--- path was never affected either way.
 ---@param player LuaPlayer
 ---@return boolean
 local function is_stamping(player)
