@@ -8,6 +8,9 @@ Date: ????
     - Drop the walkthrough mode and the ctrl+z undo checks, which Factorio Test cannot
       drive yet. The undo fixtures assert what joined the player's undo item instead of
       pressing the key and watching what came back
+    - Check the prototype data the unit tests are stubbed from against the real game,
+      which the unit tests cannot do for themselves. It found that empty space names a
+      cover tile in space age, which the stubs had recorded as naming none
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.2
 Date: 2026-09-06

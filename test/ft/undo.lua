@@ -35,7 +35,8 @@ local function build_over_ice(patch)
     patch.paint("refined-concrete")
     patch.paint_at("ice-rough", patch.gap)
     patch.stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = 10 }
-    assert(patch.tile_at() == "ice-rough", "setup: the gap is " .. patch.tile_at() .. ", not ice")
+    assert.equals("ice-rough", patch.tile_at(),
+        "setup: the gap is " .. patch.tile_at() .. ", not ice")
 
     patch.build(UNDERGROUND, patch.a, SOUTH)
     local items_before = patch.player.undo_redo_stack.get_undo_item_count()
@@ -51,23 +52,23 @@ describe("the undo stack", function()
         local patch = world.patch()
         local items_before, kinds = build_over_ice(patch)
 
-        assert(world.same_tile(patch.tile_at(), "refined-concrete"),
+        assert.is_true(world.same_tile(patch.tile_at(), "refined-concrete"),
             "setup: the gap was never covered, it is " .. patch.tile_at())
-        assert(patch.count("refined-concrete") == 9,
+        assert.equals(9, patch.count("refined-concrete"),
             "setup: the cover tile was not paid for, inventory holds " ..
             patch.count("refined-concrete"))
 
         local items_after = patch.player.undo_redo_stack.get_undo_item_count()
-        assert(items_after == items_before + 1,
+        assert.equals(items_before + 1, items_after,
             "the build should have added exactly one undo item, it added " ..
             (items_after - items_before) .. "; the mod's own placements have to join " ..
             "the player's item rather than making items of their own")
-        assert(count_of(kinds, "built-tile") == 1,
+        assert.equals(1, count_of(kinds, "built-tile"),
             "the cover tile is not in the undo item: " .. table.concat(kinds, ", "))
         -- the underground the player placed, and the connector the mod placed alongside
         -- it: create_entity has no undo parameter, so the engine is attributing the
         -- connector to the player action that triggered it
-        assert(count_of(kinds, "built-entity") == 2,
+        assert.equals(2, count_of(kinds, "built-entity"),
             "expected the underground and the connector in the undo item, got: " ..
             table.concat(kinds, ", "))
     end)
@@ -82,14 +83,14 @@ describe("the undo stack", function()
         game.tick_paused = false
         local items_before, kinds = build_over_ice(patch)
 
-        assert(patch.pipe_at() ~= nil, "setup: no connector was placed in editor mode")
+        assert.is_not_nil(patch.pipe_at(), "setup: no connector was placed in editor mode")
         local items_after = patch.player.undo_redo_stack.get_undo_item_count()
-        assert(items_after == items_before + 1,
+        assert.equals(items_before + 1, items_after,
             "the editor build should have added exactly one undo item, it added " ..
             (items_after - items_before))
-        assert(count_of(kinds, "built-tile") == 1,
+        assert.equals(1, count_of(kinds, "built-tile"),
             "the cover tile is not in the editor undo item: " .. table.concat(kinds, ", "))
-        assert(count_of(kinds, "built-entity") == 2,
+        assert.equals(2, count_of(kinds, "built-entity"),
             "expected the underground and the connector in the editor undo item, got: " ..
             table.concat(kinds, ", "))
     end)
@@ -107,17 +108,18 @@ describe("the undo stack", function()
         local items_before = patch.player.undo_redo_stack.get_undo_item_count()
         patch.build(UNDERGROUND, patch.b, NORTH)
 
-        assert(patch.pipe_at() == nil, "setup: a pipe was placed on ground it cannot sit on")
+        assert.is_nil(patch.pipe_at(),
+            "setup: a pipe was placed on ground it cannot sit on")
         local kinds = newest_undo_actions(patch.player)
         print("undo item after the declined build: " .. table.concat(kinds, ", "))
         local items_after = patch.player.undo_redo_stack.get_undo_item_count()
-        assert(items_after == items_before + 1,
+        assert.equals(items_before + 1, items_after,
             "the declined build should have added exactly the player's own undo item, " ..
             "it added " .. (items_after - items_before))
-        assert(count_of(kinds, "built-tile") == 0,
+        assert.equals(0, count_of(kinds, "built-tile"),
             "a cover tile the mod took back again is still offered for undo: " ..
             table.concat(kinds, ", "))
-        assert(count_of(kinds, "built-entity") == 1,
+        assert.equals(1, count_of(kinds, "built-entity"),
             "expected only the underground the player placed, got: " ..
             table.concat(kinds, ", "))
     end)

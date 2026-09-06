@@ -1,8 +1,10 @@
 # The integration tier
 
-41 fixtures that drive a real Factorio and check what it actually did, on top of
+88 tests that ask a real Factorio what it actually did, on top of
 [factorio-test](https://mods.factorio.com/mod/factorio-test). Headless, no display, no
-synthetic input, about five seconds end to end.
+synthetic input, about five seconds end to end. 41 of them are fixtures that build
+things and check what landed; the other 47 check the prototype data the unit tier's
+stubs transcribe, which is the one thing that tier cannot check about itself.
 
 ```bash
 npm install                          # once: fetches factorio-test-cli
@@ -25,9 +27,10 @@ second one its own `AUPC_FT_DATA`.
 Graphics mode wants a real GPU: the suite runs at `game_speed` 100, and software
 rendering on a virtual display grinds through that at a few ticks a second.
 
-The unit tier is separate and unchanged: `test/run.sh` runs the busted specs in
-`test/spec` against the stubs in `test/support`, in milliseconds, with no game at all.
-Pure decisions belong there. Anything about what the engine really does belongs here.
+The unit tier is separate: `test/run.sh` runs the busted specs in `test/spec` against
+the stubs in `test/support`, in milliseconds, with no game at all. Pure decisions belong
+there. Anything about what the engine really does belongs here. Both tiers assert with
+luassert, so `assert.equals` and friends mean the same thing on either side of the line.
 
 ## How it fits together
 
@@ -45,6 +48,13 @@ Pure decisions belong there. Anything about what the engine really does belongs 
   whose cover tile the engine refuses to place. It is not on the mod portal, so
   `run.sh` symlinks it into the runner's mods directory before every run; the CLI then
   leaves it alone rather than trying to download it.
+- `test/ft/prototypes.lua` is the join between the tiers. It requires
+  `test/support/vanilla.lua` -- the table the stubs are built from -- and asks the live
+  prototypes whether every collision mask, cover tile and tile-placing item it claims is
+  still true. A failure there means the transcription has gone stale, not that the mod
+  broke. It found two things on its first run: space age gives `empty-space` a cover
+  tile, and the `tile_condition` lists were subsets rather than transcriptions, so that
+  one field is checked as a subset on purpose.
 - `test/ft/world.lua` holds the shared ground: `world.patch()` claims a fresh 12x12
   patch of Aquilo, clears whatever the map generator put there, resets the player to a
   god controller with an empty cursor and the mod's setting at its default, and hands
@@ -66,12 +76,15 @@ test("a real pair one apart gets a real pipe", function()
     patch.stock{ [world.PIPE] = 10, [world.UNDERGROUND] = 10 }
     patch.build(world.UNDERGROUND, patch.a, defines.direction.south)
     patch.build(world.UNDERGROUND, patch.b, defines.direction.north)
-    assert(patch.pipe_at() ~= nil, "no pipe was placed in the gap")
+    assert.is_not_nil(patch.pipe_at(), "no pipe was placed in the gap")
+    assert.equals(9, patch.count(world.PIPE), "expected one pipe consumed")
 end)
 ```
 
-New files go in the list at the end of `control.lua`. `print` output is captured and
-shown with a failing test, so it is the place for the context a failure needs.
+New files go in the list at the end of `control.lua`. The message is luassert's last
+argument and prints above its diff, so say what went wrong there rather than leaving a
+bare comparison. `print` output is captured and shown with a failing test too, so it is
+the place for context that is worth having whichever assertion failed.
 
 Fixtures run straight through rather than one action per tick: the mod acts
 synchronously in `on_built_entity`, so a tick boundary between placements changes
@@ -103,7 +116,7 @@ does internally.
 Two smaller differences, neither worth a PR:
 
 - A failing fixture used to collect every failed check and report them together; a test
-  now stops at the first failed `assert`. Fixtures print their context first, so a
+  now stops at the first failed assertion. Fixtures print their context first, so a
   failure still says what the world looked like.
 - The old harness could run the packaged zip instead of the working tree
   (`AUPC_FROM_ZIP`) to prove packaging left nothing out. The runner takes a directory,

@@ -24,20 +24,22 @@ local function fluid_neighbour(entity_name, as_ghost)
         force = patch.player.force,
         raise_built = true,
     }
-    assert(neighbour ~= nil, "could not place a " .. entity_name)
+    assert.is_not_nil(neighbour, "could not place a " .. entity_name)
 
     local connection = patch.reachable_connection(neighbour)
-    assert(connection ~= nil, "no reachable fluid connection on the " .. entity_name)
+    assert.is_not_nil(connection, "no reachable fluid connection on the " .. entity_name)
 
     patch.build(UNDERGROUND, connection.spot, connection.facing)
 
     -- A ghost neighbour still gets a real pipe: only a ghost *underground* puts the
     -- mod into ghost mode. Recorded rather than judged; the point of the ghost case is
     -- that the neighbour is seen at all, which it was not in 2.0.
-    assert(patch.pipe_at(connection.gap) ~= nil, "no connector was placed against the " ..
+    assert.is_not_nil(patch.pipe_at(connection.gap),
+        "no connector was placed against the " ..
         (as_ghost and "ghost " or "") .. entity_name)
-    assert(patch.ghost_at(connection.gap) == nil, "a ghost was placed instead of a real pipe")
-    assert(patch.count(PIPE) == 9,
+    assert.is_nil(patch.ghost_at(connection.gap),
+        "a ghost was placed instead of a real pipe")
+    assert.equals(9, patch.count(PIPE),
         "expected one pipe consumed, inventory holds " .. patch.count(PIPE))
 end
 
@@ -59,7 +61,7 @@ local function gap_occupant(blocker, expect_connector, direction)
 
     local blocking_entity = patch.surface.create_entity{
         name = blocker, position = patch.gap, direction = direction, force = patch.player.force }
-    assert(blocking_entity ~= nil, "could not place a " .. blocker .. " on the gap")
+    assert.is_not_nil(blocking_entity, "could not place a " .. blocker .. " on the gap")
 
     -- both ghosts, so the placement is a ghost and the occupancy guard is what
     -- decides. A real placement would go through can_place_entity instead.
@@ -68,10 +70,10 @@ local function gap_occupant(blocker, expect_connector, direction)
 
     local ghost = patch.ghost_at()
     if expect_connector then
-        assert(ghost == PIPE,
+        assert.equals(PIPE, ghost,
             "the " .. blocker .. " blocked a ghost it should not have, found " .. tostring(ghost))
     else
-        assert(ghost == nil,
+        assert.is_nil(ghost,
             "a ghost was placed on top of a " .. blocker .. ", found " .. tostring(ghost))
     end
 end
@@ -100,20 +102,21 @@ describe("something standing on the gap", function()
         local rail = patch.surface.create_entity{
             name = "elevated-straight-rail", position = patch.gap,
             direction = defines.direction.east, force = patch.player.force }
-        assert(rail ~= nil, "could not run an elevated rail over the gap")
+        assert.is_not_nil(rail, "could not run an elevated rail over the gap")
         local overhead = false
         for _, entity in pairs(patch.surface.find_entities{ patch.gap, patch.gap }) do
             if entity == rail then overhead = true end
         end
-        assert(overhead, "the rail does not actually overlap the gap, so this proves nothing")
+        assert.is_true(overhead,
+            "the rail does not actually overlap the gap, so this proves nothing")
 
         patch.build(UNDERGROUND, patch.a, SOUTH)
         patch.build(UNDERGROUND, patch.b, NORTH)
 
-        assert(patch.pipe_at() ~= nil, "no pipe was placed under the elevated rail")
-        assert(patch.ghost_at() == nil, "a ghost was placed where a real pipe fits")
-        assert(patch.count(PIPE) == 9,
+        assert.is_not_nil(patch.pipe_at(), "no pipe was placed under the elevated rail")
+        assert.is_nil(patch.ghost_at(), "a ghost was placed where a real pipe fits")
+        assert.equals(9, patch.count(PIPE),
             "expected one pipe consumed, inventory holds " .. patch.count(PIPE))
-        assert(rail.valid, "the elevated rail was destroyed")
+        assert.is_true(rail.valid, "the elevated rail was destroyed")
     end)
 end)

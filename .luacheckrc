@@ -42,6 +42,9 @@ stds.factorio_test = {
     read_globals = {
         "after_all", "after_each", "after_test", "after_ticks", "async", "describe",
         "done", "it", "on_tick", "test", "tags", "ticks_between_tests",
+        -- luassert's, the same one the specs use; redeclared as an opaque global so
+        -- its assertion fields are not read as fields of Lua's own assert
+        "assert",
     },
 }
 files["test/ft/*.lua"] = {

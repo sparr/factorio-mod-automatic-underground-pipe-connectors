@@ -13,24 +13,26 @@ describe("quality", function()
         local patch = world.patch()
         patch.paint("refined-concrete")
         patch.stock({ [PIPE] = 10, [UNDERGROUND] = 10 }, "uncommon")
-        assert(patch.count(PIPE, "uncommon") == 10, "setup: the uncommon pipes did not go in")
+        assert.equals(10, patch.count(PIPE, "uncommon"),
+            "setup: the uncommon pipes did not go in")
 
         patch.build(UNDERGROUND, patch.a, SOUTH, nil, "uncommon")
-        assert(patch.pipe_at() == nil, "a pipe appeared before the second underground existed")
+        assert.is_nil(patch.pipe_at(),
+            "a pipe appeared before the second underground existed")
         patch.build(UNDERGROUND, patch.b, NORTH, nil, "uncommon")
 
         for label, position in pairs({ A = patch.a, B = patch.b }) do
             local built = patch.surface.find_entities_filtered{
                 name = UNDERGROUND, position = position }[1]
-            assert(built ~= nil, "setup: underground " .. label .. " was not built")
+            assert.is_not_nil(built, "setup: underground " .. label .. " was not built")
         end
 
         local pipe = patch.pipe_at()
-        assert(pipe ~= nil, "no real pipe was placed in the gap")
-        assert(patch.ghost_at() == nil, "a ghost was placed instead of a real pipe")
-        assert(pipe.quality.name == "uncommon",
+        assert.is_not_nil(pipe, "no real pipe was placed in the gap")
+        assert.is_nil(patch.ghost_at(), "a ghost was placed instead of a real pipe")
+        assert.equals("uncommon", pipe.quality.name,
             "connector quality is " .. pipe.quality.name .. ", not uncommon")
-        assert(patch.count(PIPE, "uncommon") == 9,
+        assert.equals(9, patch.count(PIPE, "uncommon"),
             "expected one uncommon pipe consumed, inventory holds " ..
             patch.count(PIPE, "uncommon"))
     end)
@@ -41,16 +43,17 @@ describe("quality", function()
         local patch = world.patch()
         patch.paint("refined-concrete")
         patch.stock({ [UNDERGROUND] = 10 }, "uncommon")
-        assert(patch.count(PIPE) == 0 and patch.count(PIPE, "uncommon") == 0,
+        assert.is_true(patch.count(PIPE) == 0 and patch.count(PIPE, "uncommon") == 0,
             "setup: pipes in inventory would mask the fallback")
 
         patch.build(UNDERGROUND, patch.a, SOUTH, nil, "uncommon")
         patch.build(UNDERGROUND, patch.b, NORTH, nil, "uncommon")
 
         local ghost = patch.ghost_entity_at()
-        assert(ghost ~= nil, "no ghost was placed in the gap")
-        assert(ghost.ghost_name == PIPE, "the ghost is " .. ghost.ghost_name .. ", not a pipe")
-        assert(ghost.quality.name == "uncommon",
+        assert.is_not_nil(ghost, "no ghost was placed in the gap")
+        assert.equals(PIPE, ghost.ghost_name,
+            "the ghost is " .. ghost.ghost_name .. ", not a pipe")
+        assert.equals("uncommon", ghost.quality.name,
             "ghost quality is " .. ghost.quality.name .. ", not uncommon")
     end)
 end)
@@ -61,7 +64,8 @@ describe("substituting a quality the player did not ask for", function()
     local function build_rare_pair(patch)
         patch.paint("refined-concrete")
         patch.stock{ [PIPE] = { normal = 5, legendary = 5 }, [UNDERGROUND] = { rare = 10 } }
-        assert(patch.count(PIPE, "rare") == 0, "setup: a rare pipe would make this prove nothing")
+        assert.equals(0, patch.count(PIPE, "rare"),
+            "setup: a rare pipe would make this prove nothing")
         patch.build(UNDERGROUND, patch.a, SOUTH, nil, "rare")
         patch.build(UNDERGROUND, patch.b, NORTH, nil, "rare")
     end
@@ -72,12 +76,12 @@ describe("substituting a quality the player did not ask for", function()
         build_rare_pair(patch)
 
         local pipe = patch.pipe_at()
-        assert(pipe ~= nil, "no real pipe was placed from the substitute stack")
-        assert(pipe.quality.name == "normal",
+        assert.is_not_nil(pipe, "no real pipe was placed from the substitute stack")
+        assert.equals("normal", pipe.quality.name,
             "connector is " .. pipe.quality.name .. ", not the nearest quality")
-        assert(patch.count(PIPE, "normal") == 4,
+        assert.equals(4, patch.count(PIPE, "normal"),
             "expected one normal pipe spent, inventory holds " .. patch.count(PIPE, "normal"))
-        assert(patch.count(PIPE, "legendary") == 5,
+        assert.equals(5, patch.count(PIPE, "legendary"),
             "the legendary pipe was spent instead of the nearer normal one")
     end)
 
@@ -86,12 +90,13 @@ describe("substituting a quality the player did not ask for", function()
         patch.substitute_quality(false)
         build_rare_pair(patch)
 
-        assert(patch.pipe_at() == nil, "a pipe of the wrong quality was spent with the setting off")
+        assert.is_nil(patch.pipe_at(),
+            "a pipe of the wrong quality was spent with the setting off")
         local ghost = patch.ghost_entity_at()
-        assert(ghost ~= nil, "no ghost was placed in the gap")
-        assert(ghost.quality.name == "rare",
+        assert.is_not_nil(ghost, "no ghost was placed in the gap")
+        assert.equals("rare", ghost.quality.name,
             "ghost quality is " .. ghost.quality.name .. ", not rare")
-        assert(patch.count(PIPE, "normal") == 5 and patch.count(PIPE, "legendary") == 5,
+        assert.is_true(patch.count(PIPE, "normal") == 5 and patch.count(PIPE, "legendary") == 5,
             "a pipe was spent with the setting off")
     end)
 
@@ -100,8 +105,10 @@ describe("substituting a quality the player did not ask for", function()
         patch.paint("refined-concrete")
         patch.paint_at("ice-rough", patch.gap)
         patch.stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = { uncommon = 10 } }
-        assert(patch.tile_at() == "ice-rough", "setup: the gap is " .. patch.tile_at() .. ", not ice")
-        assert(patch.count("refined-concrete") == 0, "setup: normal cover tiles would mask the rule")
+        assert.equals("ice-rough", patch.tile_at(),
+            "setup: the gap is " .. patch.tile_at() .. ", not ice")
+        assert.equals(0, patch.count("refined-concrete"),
+            "setup: normal cover tiles would mask the rule")
         patch.build(UNDERGROUND, patch.a, SOUTH)
         patch.build(UNDERGROUND, patch.b, NORTH)
     end
@@ -111,11 +118,11 @@ describe("substituting a quality the player did not ask for", function()
         patch.substitute_quality(true)
         build_over_ice_with_uncommon_cover(patch)
 
-        assert(world.same_tile(patch.tile_at(), "refined-concrete"),
+        assert.is_true(world.same_tile(patch.tile_at(), "refined-concrete"),
             "the meltable tile was not covered, it is still " .. patch.tile_at())
-        assert(patch.pipe_at() ~= nil, "no pipe was placed on the covered ground")
-        assert(patch.ghost_at() == nil, "a ghost was placed where a real pipe should fit")
-        assert(patch.count("refined-concrete", "uncommon") == 9,
+        assert.is_not_nil(patch.pipe_at(), "no pipe was placed on the covered ground")
+        assert.is_nil(patch.ghost_at(), "a ghost was placed where a real pipe should fit")
+        assert.equals(9, patch.count("refined-concrete", "uncommon"),
             "expected one uncommon cover tile spent, inventory holds " ..
             patch.count("refined-concrete", "uncommon"))
     end)
@@ -125,11 +132,11 @@ describe("substituting a quality the player did not ask for", function()
         patch.substitute_quality(false)
         build_over_ice_with_uncommon_cover(patch)
 
-        assert(patch.tile_at() == "ice-rough",
+        assert.equals("ice-rough", patch.tile_at(),
             "the ground was covered with a tile the player did not agree to spend")
-        assert(patch.pipe_at() == nil, "a real pipe went down on uncovered meltable ground")
-        assert(patch.ghost_at() == PIPE, "no pipe ghost was placed in the gap")
-        assert(patch.count("refined-concrete", "uncommon") == 10,
+        assert.is_nil(patch.pipe_at(), "a real pipe went down on uncovered meltable ground")
+        assert.equals(PIPE, patch.ghost_at(), "no pipe ghost was placed in the gap")
+        assert.equals(10, patch.count("refined-concrete", "uncommon"),
             "an uncommon cover tile was spent with the setting off")
     end)
 end)

@@ -28,19 +28,21 @@ local function head_on(name, expect_connector)
     print(name .. " connection types: " .. table.concat(openings, ","))
 
     patch.build(name, patch.a, SOUTH)
-    assert(patch.pipe_at() == nil, "a pipe appeared before the second junction existed")
+    assert.is_nil(patch.pipe_at(), "a pipe appeared before the second junction existed")
     patch.build(name, patch.b, NORTH)
 
     if expect_connector then
-        assert(patch.pipe_at() ~= nil, "the junction opens onto the gap but got no connector")
-        assert(patch.count(PIPE) == 9,
+        assert.is_not_nil(patch.pipe_at(),
+            "the junction opens onto the gap but got no connector")
+        assert.equals(9, patch.count(PIPE),
             "expected one pipe spent, inventory holds " .. patch.count(PIPE))
     else
-        assert(patch.pipe_at() == nil,
+        assert.is_nil(patch.pipe_at(),
             "a pipe was wedged onto a side the junction has no connection on")
-        assert(patch.ghost_at() == nil,
+        assert.is_nil(patch.ghost_at(),
             "a ghost was wedged onto a side the junction has no connection on")
-        assert(patch.count(PIPE) == 10, "a pipe was spent, inventory holds " .. patch.count(PIPE))
+        assert.equals(10, patch.count(PIPE),
+            "a pipe was spent, inventory holds " .. patch.count(PIPE))
     end
 end
 
@@ -67,12 +69,13 @@ describe("a junction underground", function()
         local arm_gap = { x = patch.left + 5.5, y = patch.top + 5.5 }
 
         patch.build(TILE, left_j, SOUTH, patch.stand)
-        assert(patch.pipe_at(arm_gap) == nil, "a pipe appeared before the second junction existed")
+        assert.is_nil(patch.pipe_at(arm_gap),
+            "a pipe appeared before the second junction existed")
         patch.build(TILE, right_j, SOUTH, patch.stand)
 
-        assert(patch.pipe_at(arm_gap) ~= nil,
+        assert.is_not_nil(patch.pipe_at(arm_gap),
             "the two junctions open onto the same tile but got no connector")
-        assert(patch.count(PIPE) == 9,
+        assert.equals(9, patch.count(PIPE),
             "expected one pipe spent, inventory holds " .. patch.count(PIPE))
     end)
 
@@ -91,14 +94,14 @@ describe("a junction underground", function()
 
         patch.build(TILE, { x = patch.left + 2.5, y = patch.top + 5.5 }, NORTH, patch.stand)
         patch.build(TILE, { x = patch.left + 6.5, y = patch.top + 5.5 }, NORTH, patch.stand)
-        assert(patch.count(PIPE) == 10,
+        assert.equals(10, patch.count(PIPE),
             "the outer pair reach different tiles and should not have been joined")
 
         patch.build(TILE, mid, NORTH, patch.stand)
 
-        assert(patch.pipe_at(west_gap) ~= nil, "the west arm was left unjoined")
-        assert(patch.pipe_at(east_gap) ~= nil, "the east arm was left unjoined")
-        assert(patch.count(PIPE) == 8,
+        assert.is_not_nil(patch.pipe_at(west_gap), "the west arm was left unjoined")
+        assert.is_not_nil(patch.pipe_at(east_gap), "the east arm was left unjoined")
+        assert.equals(8, patch.count(PIPE),
             "expected two pipes spent, inventory holds " .. patch.count(PIPE))
     end)
 
@@ -119,11 +122,11 @@ describe("a junction underground", function()
         patch.build(TILE, elbow_a, NORTH, patch.stand)
         patch.build(TILE, elbow_b, SOUTH, patch.stand)
 
-        assert(patch.pipe_at(arm_gap) ~= nil,
+        assert.is_not_nil(patch.pipe_at(arm_gap),
             "the two elbows open onto the same tile but got no connector")
-        assert(patch.pipe_at(ahead) == nil,
+        assert.is_nil(patch.pipe_at(ahead),
             "a pipe went where the elbow points, which it cannot join")
-        assert(patch.count(PIPE) == 9,
+        assert.equals(9, patch.count(PIPE),
             "expected one pipe spent, inventory holds " .. patch.count(PIPE))
     end)
 
@@ -139,13 +142,14 @@ describe("a junction underground", function()
         local ahead = { x = patch.left + 6.5, y = patch.top + 3.5 }
 
         patch.build(TILE, patch.a, NORTH, patch.stand)
-        assert(patch.pipe_at() == nil, "a pipe appeared before the second u-turn existed")
+        assert.is_nil(patch.pipe_at(), "a pipe appeared before the second u-turn existed")
         patch.build(TILE, patch.b, SOUTH, patch.stand)
 
-        assert(patch.pipe_at() ~= nil, "both u-turns open onto the gap but got no connector")
-        assert(patch.pipe_at(ahead) == nil,
+        assert.is_not_nil(patch.pipe_at(),
+            "both u-turns open onto the gap but got no connector")
+        assert.is_nil(patch.pipe_at(ahead),
             "a pipe went where the u-turn points rather than where it opens")
-        assert(patch.count(PIPE) == 9,
+        assert.equals(9, patch.count(PIPE),
             "expected one pipe spent, inventory holds " .. patch.count(PIPE))
     end)
 end)

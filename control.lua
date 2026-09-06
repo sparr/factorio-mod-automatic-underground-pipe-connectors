@@ -553,6 +553,7 @@ script.on_event(
 --- matters, because info.json keeps test/ out of the package.
 if script.active_mods["factorio-test"] and script.active_mods["aupc-tests"] then
     require("__factorio-test__/init")({
+        "test.ft.prototypes",
         "test.ft.basics",
         "test.ft.quality",
         "test.ft.junctions",
@@ -562,7 +563,7 @@ if script.active_mods["factorio-test"] and script.active_mods["aupc-tests"] then
         "test.ft.controllers",
         "test.ft.undo",
     }, {
-        load_luassert = false,
+        load_luassert = true,
         game_speed = 100,
     })
 end

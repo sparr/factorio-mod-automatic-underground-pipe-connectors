@@ -11,7 +11,7 @@ local function lay_facing_pair(patch)
         patch.surface.create_entity{ name = UNDERGROUND, position = place[1],
             direction = place[2], force = patch.player.force, raise_built = true }
     end
-    assert(patch.pipe_at() == nil and patch.ghost_at() == nil,
+    assert.is_true(patch.pipe_at() == nil and patch.ghost_at() == nil,
         "setup: something already filled the gap before the blueprint existed")
 end
 
@@ -24,15 +24,15 @@ describe("a blueprint drawn with a deliberate gap", function()
 
         local captured = patch.restamp{ { patch.a.x - 0.5, patch.a.y - 0.5 },
                                         { patch.b.x + 0.5, patch.b.y + 0.5 } }
-        assert(captured == 2, "the blueprint should hold exactly the two undergrounds")
+        assert.equals(2, captured, "the blueprint should hold exactly the two undergrounds")
 
         local undergrounds = patch.surface.find_entities_filtered{
             ghost_name = UNDERGROUND, area = patch.area }
-        assert(#undergrounds == 2,
+        assert.equals(2, #undergrounds,
             "expected the blueprint's two underground ghosts, found " .. #undergrounds)
         -- derived from where the stamp actually landed rather than where we asked
         local names = patch.occupants(world.in_front_of(undergrounds[1]))
-        assert(#names == 0,
+        assert.equals(0, #names,
             "the mod filled a gap the blueprint drew deliberately: " .. table.concat(names, "+"))
     end)
 
@@ -59,16 +59,16 @@ describe("a blueprint drawn with a deliberate gap", function()
 
         local captured = patch.restamp_via_api{ { patch.a.x - 0.5, patch.a.y - 0.5 },
                                                 { patch.b.x + 0.5, patch.b.y + 0.5 } }
-        assert(captured == 2, "the blueprint should hold exactly the two undergrounds")
-        assert(not patch.player.cursor_stack.valid_for_read,
+        assert.equals(2, captured, "the blueprint should hold exactly the two undergrounds")
+        assert.is_false(patch.player.cursor_stack.valid_for_read,
             "setup: a blueprint in the cursor would let the mod off the hook")
 
         local undergrounds = patch.surface.find_entities_filtered{
             ghost_name = UNDERGROUND, area = patch.area }
-        assert(#undergrounds == 2,
+        assert.equals(2, #undergrounds,
             "expected the blueprint's two underground ghosts, found " .. #undergrounds)
         local names = patch.occupants(world.in_front_of(undergrounds[1]))
-        assert(#names > 0,
+        assert.is_true(#names > 0,
             "the API stamp was left alone, so the known gap is closed: make this " ..
             "test assert an empty gap instead")
     end)
@@ -83,13 +83,14 @@ describe("a blueprint drawn with a deliberate gap", function()
         local tank = patch.surface.create_entity{
             name = "storage-tank", position = { x = patch.left + 6.5, y = patch.top + 2.5 },
             direction = SOUTH, force = patch.player.force, raise_built = true }
-        assert(tank ~= nil, "could not place the tank")
+        assert.is_not_nil(tank, "could not place the tank")
 
         -- downward only: the engine lays a stamp out in its own order, and putting the
         -- tank above the underground is what makes the tank the one already standing
         -- there when the mod wakes up
         local connection = patch.reachable_connection(tank, true)
-        assert(connection ~= nil, "setup: found nowhere to aim an underground at the tank")
+        assert.is_not_nil(connection,
+            "setup: found nowhere to aim an underground at the tank")
         patch.surface.create_entity{ name = UNDERGROUND, position = connection.spot,
             direction = connection.facing, force = patch.player.force, raise_built = true }
 
@@ -98,13 +99,13 @@ describe("a blueprint drawn with a deliberate gap", function()
 
         local underground = patch.surface.find_entities_filtered{
             ghost_name = UNDERGROUND, area = patch.area }[1]
-        assert(underground ~= nil, "the blueprint did not put its underground down")
+        assert.is_not_nil(underground, "the blueprint did not put its underground down")
         local names = {}
         for _, name in ipairs(patch.occupants(world.in_front_of(underground))) do
             -- the tank's own ghost is the blueprint's, not something the mod added
             if name ~= "entity-ghost/storage-tank" then names[#names + 1] = name end
         end
-        assert(#names == 0,
+        assert.equals(0, #names,
             "the mod added a connector the blueprint did not ask for: " ..
             table.concat(names, "+"))
     end)
@@ -150,10 +151,11 @@ describe("the issue 19 blueprint", function()
             ghost_name = UNDERGROUND, area = patch.area }
         local connectors = patch.surface.find_entities_filtered{
             ghost_name = PIPE, area = patch.area }
-        assert(#undergrounds == 1, "expected the blueprint's underground, found " .. #undergrounds)
-        assert(#connectors == 0,
+        assert.equals(1, #undergrounds,
+            "expected the blueprint's underground, found " .. #undergrounds)
+        assert.equals(0, #connectors,
             "the mod wedged " .. #connectors .. " connector(s) into the blueprint")
-        assert(#tanks == 2,
+        assert.equals(2, #tanks,
             "the blueprint should have placed both tanks, only " .. #tanks .. " landed")
     end)
 end)

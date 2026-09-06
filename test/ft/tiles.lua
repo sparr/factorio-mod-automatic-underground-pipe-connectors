@@ -11,7 +11,8 @@ describe("a meltable gap", function()
         patch.paint("refined-concrete")
         patch.paint_at("ice-rough", patch.gap)
         patch.stock{ [PIPE] = 10, [UNDERGROUND] = 10, ["refined-concrete"] = 10 }
-        assert(patch.tile_at() == "ice-rough", "setup: the gap is " .. patch.tile_at() .. ", not ice")
+        assert.equals("ice-rough", patch.tile_at(),
+            "setup: the gap is " .. patch.tile_at() .. ", not ice")
 
         patch.build(UNDERGROUND, patch.a, SOUTH)
         patch.build(UNDERGROUND, patch.b, NORTH)
@@ -21,13 +22,13 @@ describe("a meltable gap", function()
         print("gap tile: " .. patch.tile_at() ..
               ", at the gap: " .. table.concat(patch.occupants(patch.gap), "+"))
 
-        assert(world.same_tile(patch.tile_at(), "refined-concrete"),
+        assert.is_true(world.same_tile(patch.tile_at(), "refined-concrete"),
             "the meltable tile was not covered, it is still " .. patch.tile_at())
-        assert(patch.pipe_at() ~= nil, "no pipe was placed on the covered ground")
-        assert(patch.ghost_at() == nil, "a ghost was placed where a real pipe should fit")
-        assert(patch.count(PIPE) == 9,
+        assert.is_not_nil(patch.pipe_at(), "no pipe was placed on the covered ground")
+        assert.is_nil(patch.ghost_at(), "a ghost was placed where a real pipe should fit")
+        assert.equals(9, patch.count(PIPE),
             "expected one pipe consumed, inventory holds " .. patch.count(PIPE))
-        assert(patch.count("refined-concrete") == 9,
+        assert.equals(9, patch.count("refined-concrete"),
             "expected one cover tile consumed, inventory holds " ..
             patch.count("refined-concrete"))
     end)
@@ -38,20 +39,23 @@ describe("a meltable gap", function()
         patch.paint("refined-concrete")
         patch.paint_at("ice-rough", patch.gap)
         patch.stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
-        assert(patch.tile_at() == "ice-rough", "setup: the gap is " .. patch.tile_at() .. ", not ice")
+        assert.equals("ice-rough", patch.tile_at(),
+            "setup: the gap is " .. patch.tile_at() .. ", not ice")
 
         patch.build(UNDERGROUND, patch.a, SOUTH)
         patch.build(UNDERGROUND, patch.b, NORTH)
 
-        assert(patch.tile_at() == "ice-rough", "the ground was changed without paying for it")
-        assert(patch.pipe_at() == nil, "a real pipe was placed on uncovered meltable ground")
-        assert(patch.ghost_at() == PIPE,
+        assert.equals("ice-rough", patch.tile_at(),
+            "the ground was changed without paying for it")
+        assert.is_nil(patch.pipe_at(),
+            "a real pipe was placed on uncovered meltable ground")
+        assert.equals(PIPE, patch.ghost_at(),
             "expected a pipe ghost, found " .. tostring(patch.ghost_at()))
         local covers = patch.tile_ghosts_at()
-        assert(#covers == 1, "expected one cover tile ghost, found " .. #covers)
-        assert(world.same_tile(covers[1], "refined-concrete"),
+        assert.equals(1, #covers, "expected one cover tile ghost, found " .. #covers)
+        assert.is_true(world.same_tile(covers[1], "refined-concrete"),
             "expected the foundation the undergrounds stand on, found " .. tostring(covers[1]))
-        assert(patch.count(PIPE) == 10, "a pipe was consumed for a ghost")
+        assert.equals(10, patch.count(PIPE), "a pipe was consumed for a ghost")
     end)
 end)
 
@@ -69,7 +73,7 @@ describe("an ammoniacal ocean gap between ice platforms", function()
         patch.paint_at("concrete", patch.a)
         patch.paint_at("concrete", patch.b)
         patch.stock{}
-        assert(patch.tile_at() == "ammoniacal-ocean",
+        assert.equals("ammoniacal-ocean", patch.tile_at(),
             "setup: the gap is " .. patch.tile_at() .. ", not ocean")
 
         patch.build_ghost(UNDERGROUND, patch.a, SOUTH)
@@ -80,10 +84,10 @@ describe("an ammoniacal ocean gap between ice platforms", function()
                   " on " .. patch.tile_at(position))
         end
 
-        assert(patch.ghost_at() == PIPE,
+        assert.equals(PIPE, patch.ghost_at(),
             "expected a pipe ghost, found " .. tostring(patch.ghost_at()))
         local covers = patch.tile_ghosts_at()
-        assert(#covers == 2,
+        assert.equals(2, #covers,
             "expected an ice platform ghost and a cover on top of it, found " ..
             #covers .. " (" .. table.concat(covers, ", ") .. ")")
     end)

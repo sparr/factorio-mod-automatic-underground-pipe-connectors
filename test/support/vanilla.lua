@@ -19,10 +19,15 @@ return {
                                            doodad=true, floor=true},
                                  default_cover = "landfill" },
         -- tile_collision_masks.ground()
-        -- no item places this one, and the engine refuses to make a tile ghost of it
+        -- no item places this one, and the engine refuses to make a tile ghost of it.
+        -- Space age gives it a cover tile all the same, which is the shape Warptorio
+        -- copies: naming a cover is not the same as being coverable.
         ["empty-space"]      = { layers = {ground_tile=true, water_tile=true, empty_space=true,
                                            resource=true, floor=true, item=true, object=true,
-                                           player=true, doodad=true} },
+                                           player=true, doodad=true},
+                                 default_cover = "space-platform-foundation" },
+        ["space-platform-foundation"] = { layers = {ground_tile=true},
+                                          item = "space-platform-foundation" },
         ["grass-1"]          = { layers = {ground_tile=true} },
         ["concrete"]         = { layers = {ground_tile=true}, item = "concrete" },
         ["refined-concrete"] = { layers = {ground_tile=true}, item = "refined-concrete" },
@@ -49,5 +54,9 @@ return {
         -- the real list is water, wetland, oil ocean and lava, pointedly not ammoniacal ocean
         ["foundation"]       = { result = "foundation",       condition = {},
                                  tile_condition = {"water"} },
+        -- The one inverted condition in this set: with `invert`, the mask says where the
+        -- tile may go rather than where it may not, so this one goes on empty space alone.
+        ["space-platform-foundation"] = { result = "space-platform-foundation",
+                                          condition = {empty_space=true}, invert = true },
     },
 }
