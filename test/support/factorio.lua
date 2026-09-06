@@ -136,16 +136,44 @@ function support.surface(opts)
         return found
     end
 
+    -- Quality is not part of an entity's name. Anywhere the API takes an
+    -- EntityWithQualityID or ItemWithQualityID, a bare name means *normal*, not
+    -- "any", so the stub reproduces that trap rather than smoothing it over.
+    local function quality_of(entity)
+        return entity.quality or "normal"
+    end
+
+    local function wanted_name(id)
+        return type(id) == "table" and id.name or id
+    end
+
+    local function wanted_quality(id)
+        return type(id) == "table" and (id.quality or "normal") or "normal"
+    end
+
     return {
         calls = calls,
         get_default_cover_tile = function(_, tile)
             return cover_tiles[type(tile) == "table" and tile.name or tile]
         end,
-        find_entity = function(name, position)
+        find_entity = function(entity_id, position)
+            local name, quality = wanted_name(entity_id), wanted_quality(entity_id)
             for _, entity in ipairs(entities_at(position)) do
-                if entity.name == name then return entity end
+                if entity.name == name and quality_of(entity) == quality then return entity end
             end
             return nil
+        end,
+        -- here quality is a filter of its own, so leaving it out matches every quality
+        find_entities_filtered = function(filter)
+            local found = {}
+            for _, entity in ipairs(entities_at(filter.position)) do
+                local matches = true
+                if filter.name and entity.name ~= filter.name then matches = false end
+                if filter.ghost_name and entity.ghost_name ~= filter.ghost_name then matches = false end
+                if filter.quality and quality_of(entity) ~= filter.quality then matches = false end
+                if matches then found[#found + 1] = entity end
+            end
+            return found
         end,
         find_entities = function(area)
             return entities_at(area[1])

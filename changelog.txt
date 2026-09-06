@@ -8,6 +8,9 @@ Date: ????
       no longer get a connector that joins nothing and costs an item
     - Connect on modded ground that names a default cover tile, such as Moshine dry
       swamp, instead of placing nothing at all
+    - Connect undergrounds of any quality, and give the connector that same quality.
+      The neighbour search could only ever see normal quality, so a pair of uncommon
+      undergrounds got nothing at all
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05

@@ -194,18 +194,23 @@ local function paint(tile_name, area)
     world.surface.set_tiles(tiles, true, false, false, false)
 end
 
-local function stock(items)
+--- `quality` is optional and applies to every item in the table
+local function stock(items, quality)
     local inventory = world.player.get_main_inventory()
     if not inventory then return end
     inventory.clear()
     for name, count in pairs(items) do
-        inventory.insert{ name = name, count = count }
+        inventory.insert{ name = name, count = count, quality = quality }
     end
 end
 
-local function count(item_name)
+--- A bare item name means normal quality to the API, not "any quality", so a
+--- fixture asking about uncommon items has to say so.
+local function count(item_name, quality)
     local inventory = world.player.get_main_inventory()
-    return inventory and inventory.get_item_count(item_name) or 0
+    if not inventory then return 0 end
+    if quality then return inventory.get_item_count{ name = item_name, quality = quality } end
+    return inventory.get_item_count(item_name)
 end
 
 --- Take the item out of the player's own inventory rather than conjuring it into
@@ -213,16 +218,17 @@ end
 --- watches the mod pay for the connector, which is not a situation any player is
 --- ever in. Editor and remote have nothing to draw from, and the game charges
 --- nothing in either, so those fall back to a stack from thin air.
-local function build_real(name, position, direction, stand_at)
+local function build_real(name, position, direction, stand_at, quality)
     -- Only move for a caller that asks: a character has to stand clear of its own
     -- build site, but moving for every placement drags the camera off the patch.
     if stand_at then world.player.teleport(stand_at, world.surface) end
     local inventory = world.player.get_main_inventory()
-    local stack = inventory and inventory.find_item_stack(name)
+    local stack = inventory and inventory.find_item_stack(
+        quality and { name = name, quality = quality } or name)
     if stack then
         world.player.cursor_stack.swap_stack(stack)
     else
-        world.player.cursor_stack.set_stack{ name = name, count = 1 }
+        world.player.cursor_stack.set_stack{ name = name, count = 1, quality = quality }
     end
     world.player.build_from_cursor{ position = position, direction = direction }
     if inventory and world.player.cursor_stack.valid_for_read then
@@ -247,12 +253,15 @@ end
 
 --------------------------------------------------------------------------- inspection
 
+--- find_entity would only ever see a normal-quality one: a bare name is an
+--- EntityWithQualityID, and that means normal, not any.
 local function pipe_at_gap()
-    return world.surface.find_entity(PIPE, world.gap)
+    return world.surface.find_entities_filtered{ name = PIPE, position = world.gap }[1]
 end
 
 local function ghost_at_gap()
-    local ghost = world.surface.find_entity("entity-ghost", world.gap)
+    local ghost = world.surface.find_entities_filtered{
+        name = "entity-ghost", position = world.gap }[1]
     return ghost and ghost.ghost_name or nil
 end
 
@@ -307,6 +316,75 @@ local function fixture_plain_ground()
         check(same_tile(tile_at_gap(), "refined-concrete"),
             "the ground was changed to " .. tile_at_gap())
         check(#tile_ghosts_at_gap() == 0, "an unnecessary tile ghost was placed")
+    end)
+end
+
+--- Quality. The mod reads none of it: it finds the pipe by entity name, and both
+--- the inventory calls and create_entity take a bare name, which means normal.
+local function fixture_quality()
+    begin("uncommon undergrounds get an uncommon connector")
+    step("paint the patch and stock uncommon pipes and undergrounds, no normal ones", function()
+        paint("refined-concrete")
+        stock({ [PIPE] = 10, [UNDERGROUND] = 10 }, "uncommon")
+        note("uncommon pipes held: " .. count(PIPE, "uncommon"))
+        note("bare-name pipe count: " .. count(PIPE))
+        check(count(PIPE, "uncommon") == 10, "setup: the uncommon pipes did not go in")
+    end)
+    step("build uncommon underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south, nil, "uncommon")
+    end)
+    step("confirm nothing was placed yet, then build uncommon underground B", function()
+        check(pipe_at_gap() == nil, "a pipe appeared before the second underground existed")
+        build_real(UNDERGROUND, world.b, defines.direction.north, nil, "uncommon")
+        for label, pos in pairs({ A = world.a, B = world.b }) do
+            local built = world.surface.find_entities_filtered{
+                name = UNDERGROUND, position = pos }[1]
+            check(built ~= nil, "setup: underground " .. label .. " was not built")
+            note("underground " .. label .. ": " ..
+                (built and built.quality.name or "MISSING"))
+        end
+    end)
+    step("check the connector is a real uncommon pipe paid for out of the uncommon stack", function()
+        local pipe = pipe_at_gap()
+        local ghost = ghost_at_gap()
+        note("connector: " .. (pipe and ("real " .. pipe.quality.name) or
+             (ghost and ("ghost " .. ghost) or "nothing")))
+        note("uncommon pipes left: " .. count(PIPE, "uncommon"))
+        note("normal pipes left: " .. count(PIPE))
+        check(pipe ~= nil, "no real pipe was placed in the gap")
+        check(ghost == nil, "a ghost was placed instead of a real pipe")
+        check(pipe and pipe.quality.name == "uncommon",
+            "connector quality is " .. (pipe and pipe.quality.name or "n/a") .. ", not uncommon")
+        check(count(PIPE, "uncommon") == 9,
+            "expected one uncommon pipe consumed, inventory holds " .. count(PIPE, "uncommon"))
+    end)
+end
+
+--- Same again with nothing to pay with. The fallback ghost has to carry the quality
+--- the player placed, or reviving it later builds the wrong pipe.
+local function fixture_quality_ghost()
+    begin("uncommon undergrounds with no pipes get an uncommon ghost")
+    step("paint the patch and stock uncommon undergrounds but no pipes at all", function()
+        paint("refined-concrete")
+        stock({ [UNDERGROUND] = 10 }, "uncommon")
+        check(count(PIPE) == 0 and count(PIPE, "uncommon") == 0,
+            "setup: pipes in inventory would mask the fallback")
+    end)
+    step("build uncommon underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south, nil, "uncommon")
+    end)
+    step("build uncommon underground B facing north", function()
+        build_real(UNDERGROUND, world.b, defines.direction.north, nil, "uncommon")
+    end)
+    step("check the gap holds an uncommon pipe ghost", function()
+        local ghost = world.surface.find_entities_filtered{
+            name = "entity-ghost", position = world.gap }[1]
+        check(ghost ~= nil, "no ghost was placed in the gap")
+        note("ghost: " .. (ghost and (ghost.ghost_name .. " " .. ghost.quality.name) or "none"))
+        check(ghost and ghost.ghost_name == PIPE,
+            "the ghost is " .. (ghost and ghost.ghost_name or "absent") .. ", not a pipe")
+        check(ghost and ghost.quality.name == "uncommon",
+            "ghost quality is " .. (ghost and ghost.quality.name or "n/a") .. ", not uncommon")
     end)
 end
 
@@ -974,6 +1052,8 @@ local function finish()
 end
 
 fixture_plain_ground()
+fixture_quality()
+fixture_quality_ghost()
 fixture_covered_ground()
 fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()

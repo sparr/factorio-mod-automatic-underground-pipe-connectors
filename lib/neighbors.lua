@@ -155,19 +155,26 @@ local function find_connection_neighbor(
             underground_position.x + neighbor_candidate.pos[1],
             underground_position.y + neighbor_candidate.pos[2],
         }
-        -- first, check for a matching underground pipe
-        local neighbor_entity = surface.find_entity( underground_entity_name, candidate_pos )
-        if neighbor_entity
-        and neighbor_entity.name == underground_entity_name
-        and neighbor_entity.direction == neighbor_candidate.dir then
-            return true
+        -- first, check for a matching underground pipe, of any quality. find_entity
+        -- takes an EntityWithQualityID, and a bare name there means normal quality
+        -- rather than any, so it cannot see an uncommon neighbour at all. In the
+        -- filtered search quality is a filter of its own, and omitting it matches
+        -- everything, which is what we want: quality has no bearing on whether two
+        -- pipes can join.
+        for _, neighbor_entity in pairs(surface.find_entities_filtered{
+            name = underground_entity_name, position = candidate_pos })
+        do
+            if neighbor_entity.direction == neighbor_candidate.dir then
+                return true
+            end
         end
-        -- check for a matching underground pipe ghost
-        local neighbor_ghost = surface.find_entity( "entity-ghost", candidate_pos )
-        if neighbor_ghost
-        and neighbor_ghost.ghost_name == underground_entity_name
-        and neighbor_ghost.direction == neighbor_candidate.dir then
-            return true
+        -- check for a matching underground pipe ghost, likewise of any quality
+        for _, neighbor_ghost in pairs(surface.find_entities_filtered{
+            ghost_name = underground_entity_name, position = candidate_pos })
+        do
+            if neighbor_ghost.direction == neighbor_candidate.dir then
+                return true
+            end
         end
         -- check for a matching non-pipe entity with a fluidbox connection
         local neighbor_entities = surface.find_entities( { candidate_pos, candidate_pos } )

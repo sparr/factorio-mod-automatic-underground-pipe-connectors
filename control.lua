@@ -67,6 +67,12 @@ local function on_built_entity(event)
         underground_entity_name = entity.name
     end
 
+    -- Quality is not part of an entity's name, and every API that takes a bare
+    -- name defaults it to normal: find_entity, find_item_stack, create_entity. The
+    -- connector matches the underground the player placed, for the same reason its
+    -- ghostness does.
+    local placed_quality = entity.quality
+
     local lookup_entry = storage.pipe_lookup[underground_entity_name]
     if not lookup_entry then return end -- we don't know what pipe goes with this underground pipe, bail out
 
@@ -103,7 +109,8 @@ local function on_built_entity(event)
     -- if we don't have any regular pipes in our inventory we want to place a ghost instead
     if not placing_ghost and not free_build then
         if inventory then
-            pipe_stack = inventory.find_item_stack(pipe_item_name)
+            pipe_stack = inventory.find_item_stack{
+                name = pipe_item_name, quality = placed_quality }
             placing_ghost = not pipe_stack
         else
             placing_ghost = true
@@ -228,6 +235,7 @@ local function on_built_entity(event)
     local pipe_entity_definition = {
         name = placing_ghost and "entity-ghost" or pipe_entity_name,
         position = pipe_position,
+        quality = placed_quality,
         -- properties just for create_entity
         force = entity.force,
         player = event.player_index,
@@ -272,9 +280,11 @@ local function on_built_entity(event)
     end
 
     if underground_surface.can_fast_replace( pipe_entity_definition --[[@as LuaSurface.can_fast_replace_param]] ) then
-        local ghost = underground_surface.find_entity("entity-ghost", pipe_entity_definition.position)
-        -- a matching ghost is ok to replace, so only bail out for anything else
-        if not ghost or ghost.ghost_name ~= pipe_entity_name then
+        -- a matching ghost is ok to replace, so only bail out for anything else.
+        -- any quality of it: find_entity would only ever have found a normal one
+        local ghosts = underground_surface.find_entities_filtered{
+            ghost_name = pipe_entity_name, position = pipe_entity_definition.position }
+        if not ghosts[1] then
             -- bail out because there's something here our pipe would fast replace
             return
         end
@@ -343,7 +353,7 @@ local function on_built_entity(event)
     if not placing_ghost and not free_build then
         -- we ensured above that placing_ghost is true xor we have the necessary item to remove from inventory
         if inventory then
-            inventory.remove({name=pipe_item_name})
+            inventory.remove({name=pipe_item_name, count=1, quality=placed_quality})
         else
             player.print("Placed a pipe for free. This shouldn't happen. Please report a bug on "
                 .. "the Automatic Underground Pipe Connectors mod discussion page or github issue "
@@ -356,7 +366,7 @@ local function on_built_entity(event)
         -- the world changed under us between the checks above and now
         rollback()
         if not placing_ghost and not free_build and inventory then
-            inventory.insert({name=pipe_item_name, count=1})
+            inventory.insert({name=pipe_item_name, count=1, quality=placed_quality})
         end
     end
 end

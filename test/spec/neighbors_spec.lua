@@ -123,6 +123,33 @@ describe("find_connection_neighbor", function()
         assert.is_true(found)
     end)
 
+    -- find_entity takes an EntityWithQualityID, where a bare name means normal, so
+    -- the search used to skip every non-normal neighbour and place nothing at all
+    it("finds an underground of a quality other than normal", function()
+        local found = look{
+            { name = UNDERGROUND, type = UNDERGROUND, quality = "uncommon",
+              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
+        }
+        assert.is_true(found)
+    end)
+
+    it("finds a ghost partner of a quality other than normal", function()
+        local found = look{
+            { name = "entity-ghost", type = "entity-ghost", ghost_name = UNDERGROUND,
+              ghost_type = UNDERGROUND, quality = "legendary",
+              direction = defines.direction.south, position = { x = 10.5, y = 18.5 } },
+        }
+        assert.is_true(found)
+    end)
+
+    it("still respects direction for a non-normal neighbour", function()
+        local found = look{
+            { name = UNDERGROUND, type = UNDERGROUND, quality = "rare",
+              direction = defines.direction.north, position = { x = 10.5, y = 18.5 } },
+        }
+        assert.is_false(found)
+    end)
+
     it("ignores an underground in the right place facing the wrong way", function()
         local found = look{
             { name = UNDERGROUND, type = UNDERGROUND,
