@@ -83,9 +83,10 @@ local unghostable = {
 
 data:extend{ warp, unghostable }
 
---- Pipe Plus's T and X junction undergrounds, copied from its pipe.lua (issue #15).
---- Both keep the vanilla underground connection facing south. The T opens east and
---- west above ground and nowhere else; the X adds north.
+--- Pipe Plus's junction undergrounds, copied from its own prototypes (issue #15): the
+--- T and X from pipe.lua, the elbow from extra-pipes.lua. All three keep the vanilla
+--- underground connection facing south. The T opens east and west above ground and
+--- nowhere else, the X adds north, and the elbow opens east alone.
 ---
 --- North is the whole problem. A vanilla underground opens on the side it faces, so
 --- "the tile ahead" and "the tile it opens onto" are the same tile, and the mod has
@@ -139,4 +140,23 @@ data:extend{ junction("aupc-tests-x-junction", {
     UNDERGROUND_SOUTH,
     { direction = defines.direction.east, position = { 0, 0 } },
     { direction = defines.direction.west, position = { 0, 0 } },
+}) }
+
+--- And its elbow, from extra-pipes.lua: the four "rotatable" variants keep the vanilla
+--- underground connection and point the single above-ground one at a fixed direction.
+--- The sharpest of the three shapes -- one opening, and never the one straight ahead,
+--- so an elbow can only ever be joined along an arm.
+data:extend{ junction("aupc-tests-elbow", {
+    { direction = defines.direction.east, position = { 0, 0 } },
+    UNDERGROUND_SOUTH,
+}) }
+
+--- The fourth rotatable variant is a u-turn: the above-ground connection points the
+--- same way as the buried one. Both ends of it face the same side, so the tile it
+--- opens onto is also the tile its underground run sets off through -- which is the
+--- one place the "normal" filter has to do real work, or the same tile would be
+--- reported twice for two quite different reasons.
+data:extend{ junction("aupc-tests-u-turn", {
+    { direction = defines.direction.south, position = { 0, 0 } },
+    UNDERGROUND_SOUTH,
 }) }

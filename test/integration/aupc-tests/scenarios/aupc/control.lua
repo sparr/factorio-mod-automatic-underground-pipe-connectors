@@ -651,6 +651,70 @@ local function fixture_junction_both_arms()
     end)
 end
 
+--- The elbow, which has one opening and it is never straight ahead. Two of them are
+--- turned to face each other along that opening, so the tile between them is the only
+--- one either can use -- and the tile each of them faces is one neither can.
+local function fixture_elbow()
+    begin("two elbows are joined along their arms, not where they point")
+    local TILE = "aupc-tests-elbow"
+    step("paint refined concrete and stock elbows", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [TILE] = 10 }
+        world.elbow_a = { x = world.left + 4.5, y = 5.5 }
+        world.elbow_b = { x = world.left + 6.5, y = 5.5 }
+        world.arm_gap = { x = world.left + 5.5, y = 5.5 }
+        -- straight ahead of A, which is where the old geometry would have aimed
+        world.ahead = { x = world.left + 4.5, y = 4.5 }
+    end)
+    step("build elbow A, opening east", function()
+        build_real(TILE, world.elbow_a, defines.direction.north, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("build elbow B two tiles east, turned to open west", function()
+        build_real(TILE, world.elbow_b, defines.direction.south, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("check the arms were joined and nothing went where they point", function()
+        local between = world.surface.find_entities_filtered{ name = PIPE, position = world.arm_gap }[1]
+        local ahead = world.surface.find_entities_filtered{ name = PIPE, position = world.ahead }[1]
+        note("between the arms: " .. (between and "pipe" or "nothing") ..
+             ", straight ahead of A: " .. (ahead and "pipe" or "nothing") ..
+             ", pipes left: " .. count(PIPE))
+        check(between ~= nil, "the two elbows open onto the same tile but got no connector")
+        check(ahead == nil, "a pipe went where the elbow points, which it cannot join")
+        check(count(PIPE) == 9, "expected one pipe spent, inventory holds " .. count(PIPE))
+    end)
+end
+
+--- The u-turn, whose above-ground opening and buried run leave on the same side. Two
+--- of them facing each other open onto the same tile, so a connector belongs there --
+--- and note they are joined underground as well, which is inherent to the shape rather
+--- than anything the mod did.
+local function fixture_u_turn()
+    begin("two u-turns are joined on the side they both open onto")
+    local TILE = "aupc-tests-u-turn"
+    step("paint refined concrete and stock u-turns", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [TILE] = 10 }
+        -- A opens south into the gap, B opens north into it
+        world.ahead = { x = world.left + 6.5, y = 3.5 }
+    end)
+    step("build A, opening south into the gap", function()
+        build_real(TILE, world.a, defines.direction.north, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("confirm nothing yet, then build B opening north into it", function()
+        check(pipe_at_gap() == nil, "a pipe appeared before the second u-turn existed")
+        build_real(TILE, world.b, defines.direction.south, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("check the gap was joined and nothing went where A points", function()
+        local ahead = world.surface.find_entities_filtered{ name = PIPE, position = world.ahead }[1]
+        note("at the gap: " .. (pipe_at_gap() and "pipe" or "nothing") ..
+             ", where A points: " .. (ahead and "pipe" or "nothing") ..
+             ", pipes left: " .. count(PIPE))
+        check(pipe_at_gap() ~= nil, "both u-turns open onto the gap but got no connector")
+        check(ahead == nil, "a pipe went where the u-turn points rather than where it opens")
+        check(count(PIPE) == 9, "expected one pipe spent, inventory holds " .. count(PIPE))
+    end)
+end
+
 --- Warptorio's warp foundation: buildable ground naming empty-space as its cover.
 --- The mod used to hand that straight to can_place_entity as a tile ghost and die on
 --- "empty-space can not be part a tile ghost".
@@ -1651,6 +1715,8 @@ fixture_junction("aupc-tests-x-junction",
     "an X junction is still bridged, because it opens that way", true)
 fixture_junction_sideways()
 fixture_junction_both_arms()
+fixture_elbow()
+fixture_u_turn()
 fixture_issue_19_blueprint()
 fixture_unghostable_cover()
 fixture_ice_gap_with_cover()
