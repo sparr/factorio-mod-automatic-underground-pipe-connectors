@@ -62,8 +62,16 @@ function support.install_prototypes(spec)
         }
     end
 
-    _G.prototypes = { tile = tile_prototypes, item = item_prototypes }
-    return tile_prototypes, item_prototypes
+    local entity_prototypes = {}
+    for name, entity in pairs(spec.entities or {}) do
+        entity_prototypes[name] = {
+            name = name,
+            collision_mask = { layers = entity.layers or {} },
+        }
+    end
+
+    _G.prototypes = { tile = tile_prototypes, item = item_prototypes, entity = entity_prototypes }
+    return tile_prototypes, item_prototypes, entity_prototypes
 end
 
 --- A tile, as LuaSurface.get_tile would hand one back

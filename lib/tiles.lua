@@ -28,6 +28,22 @@ local function cover_tile_for(surface, force, tile_prototype)
     return surface.get_default_cover_tile(force, tile_prototype) or tile_prototype.default_cover_tile
 end
 
+--- Is this tile in the way of an entity, so that something has to be laid over it first?
+--- Not the same question as whether the tile names a cover tile. `default_cover_tile` only
+--- says which tile to use *if* the player wants to pave, and modded ground tiles set it while
+--- staying perfectly buildable. Vanilla only ever sets it on water, lava and oil ocean, which
+--- are unbuildable anyway, so the difference between the two questions has never shown up there.
+---@param tile_prototype LuaTilePrototype
+---@param entity_prototype LuaEntityPrototype
+---@return boolean
+local function tile_blocks_entity(tile_prototype, entity_prototype)
+    local entity_layers = entity_prototype.collision_mask.layers
+    for layer in pairs(tile_prototype.collision_mask.layers) do
+        if entity_layers[layer] then return true end
+    end
+    return false
+end
+
 --- Would the game let a player place `cover_tile_prototype` on top of `target_tile_prototype`?
 --- `place_as_tile.condition` is an exclusion mask: the target must have none of its layers.
 ---@param cover_tile_prototype LuaTilePrototype
@@ -134,6 +150,7 @@ end
 
 tiles.tile_item_name = tile_item_name
 tiles.cover_tile_for = cover_tile_for
+tiles.tile_blocks_entity = tile_blocks_entity
 tiles.tile_can_cover = tile_can_cover
 tiles.find_melt_cover_tile = find_melt_cover_tile
 tiles.save_tile_state = save_tile_state

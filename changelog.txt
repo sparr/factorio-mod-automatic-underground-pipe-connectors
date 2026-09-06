@@ -6,6 +6,8 @@ Date: ????
   Bugfixes:
     - Only connect fluidboxes whose connection categories allow it, so tiered-fluid mods
       no longer get a connector that joins nothing and costs an item
+    - Connect on modded ground that names a default cover tile, such as Moshine dry
+      swamp, instead of placing nothing at all
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05

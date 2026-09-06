@@ -310,6 +310,39 @@ local function fixture_plain_ground()
     end)
 end
 
+--- Buildable ground that merely names a cover tile. The mod used to read
+--- default_cover_tile as "this ground needs covering", try to place a cover tile ghost
+--- the game refuses, and bail out, so nothing appeared at all. Reported against
+--- Moshine dry swamp, which is ground_tile with default_cover_tile = foundation.
+local function fixture_covered_ground()
+    begin("buildable ground that names a cover tile still gets a real pipe")
+    local TILE = "aupc-tests-covered-ground"
+    step("paint the patch with ground that names a cover tile, stock pipes", function()
+        paint(TILE)
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        check(tile_at_gap() == TILE, "setup: the gap is " .. tile_at_gap() .. ", not " .. TILE)
+        local cover = prototypes.tile[TILE].default_cover_tile
+        check(cover ~= nil, "setup: the test tile names no cover tile, so it proves nothing")
+        note("default_cover_tile = " .. tostring(cover and cover.name))
+    end)
+    step("build underground A, facing south", function()
+        build_real(UNDERGROUND, world.a, defines.direction.south)
+    end)
+    step("confirm nothing was placed yet, then build underground B facing north", function()
+        check(pipe_at_gap() == nil, "a pipe appeared before the second underground existed")
+        build_real(UNDERGROUND, world.b, defines.direction.north)
+    end)
+    step("check a real pipe filled the gap and the ground was left alone", function()
+        check(pipe_at_gap() ~= nil, "no pipe was placed in the gap")
+        check(ghost_at_gap() == nil, "a ghost was placed instead of a real pipe")
+        check(count(PIPE) == 9, "expected one pipe consumed, inventory holds " .. count(PIPE))
+        check(tile_at_gap() == TILE, "the ground was paved over, it is now " .. tile_at_gap())
+        check(#tile_ghosts_at_gap() == 0,
+            "a cover tile ghost was placed on ground that did not need covering: " ..
+            table.concat(tile_ghosts_at_gap(), "+"))
+    end)
+end
+
 --- The gap is meltable, the player is carrying something that can cover it
 local function fixture_ice_gap_with_cover()
     begin("meltable gap gets a real cover tile when the item is held")
@@ -941,6 +974,7 @@ local function finish()
 end
 
 fixture_plain_ground()
+fixture_covered_ground()
 fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()
 fixture_ghost_neighbour()

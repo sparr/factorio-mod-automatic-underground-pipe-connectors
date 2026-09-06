@@ -4,6 +4,7 @@
 ---   base/prototypes/item.lua                        concrete, refined concrete, landfill
 ---   space-age/prototypes/item.lua                   ice platform, foundation
 ---   space-age/base-data-updates.lua:934             the stone brick patch
+---   core/lualib/collision-mask-defaults.lua         the building() entity mask a pipe uses
 return {
     tiles = {
         -- tile_collision_masks.meltable_tile()
@@ -24,6 +25,12 @@ return {
         ["stone-path"]       = { layers = {ground_tile=true}, item = "stone-brick" },
         ["landfill"]         = { layers = {ground_tile=true}, item = "landfill" },
         ["foundation"]       = { layers = {ground_tile=true}, item = "foundation" },
+    },
+    -- collision_mask_defaults.building(), which is what a pipe gets. Note the absence
+    -- of ground_tile: that is why a pipe sits on grass but not on water or on ice.
+    entities = {
+        ["pipe"] = { layers = {item=true, meltable=true, object=true, player=true,
+                               water_tile=true, is_object=true, is_lower_object=true} },
     },
     -- `condition` is an exclusion mask: the target tile must have none of these layers
     items = {

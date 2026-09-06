@@ -1,7 +1,7 @@
 local support = require("test.support.factorio")
 support.install_defines()
 support.install_storage()
-local tile_prototypes = support.install_prototypes(require("test.support.vanilla"))
+local tile_prototypes, _, entity_prototypes = support.install_prototypes(require("test.support.vanilla"))
 local tiles = require("lib.tiles")
 
 local force = { name = "player" }
@@ -27,6 +27,45 @@ describe("tile_item_name", function()
         tiles.tile_item_name("concrete")
         storage.tile_lookup["concrete"] = "something-else"
         assert.equals("something-else", tiles.tile_item_name("concrete"))
+    end)
+end)
+
+describe("tile_blocks_entity", function()
+    local pipe = entity_prototypes["pipe"]
+
+    it("says water is in the way, via water_tile", function()
+        assert.is_true(tiles.tile_blocks_entity(tile_prototypes["water"], pipe))
+        assert.is_true(tiles.tile_blocks_entity(tile_prototypes["ammoniacal-ocean"], pipe))
+    end)
+
+    it("says ice is in the way, via meltable, even though it is ground", function()
+        assert.is_true(tiles.tile_blocks_entity(tile_prototypes["ice-rough"], pipe))
+        assert.is_true(tiles.tile_blocks_entity(tile_prototypes["ice-platform"], pipe))
+    end)
+
+    it("says ordinary ground is not in the way", function()
+        assert.is_false(tiles.tile_blocks_entity(tile_prototypes["grass-1"], pipe))
+        assert.is_false(tiles.tile_blocks_entity(tile_prototypes["refined-concrete"], pipe))
+        assert.is_false(tiles.tile_blocks_entity(tile_prototypes["foundation"], pipe))
+    end)
+
+    -- Moshine's dry swamp, the tile behind the report: buildable ground that names a
+    -- cover tile. Reading default_cover_tile as "this needs covering" made the mod try
+    -- to lay a foundation ghost the game refuses, and bail out when it could not.
+    it("says a buildable tile is not in the way even when it names a cover tile", function()
+        local dry_swamp = {
+            name = "moshine-hot-swamp",
+            collision_mask = { layers = { ground_tile = true } },
+            default_cover_tile = tile_prototypes["foundation"],
+        }
+        assert.is_false(tiles.tile_blocks_entity(dry_swamp, pipe))
+        -- the cover tile is still there to be found, it is just not wanted here
+        assert.equals(tile_prototypes["foundation"], dry_swamp.default_cover_tile)
+    end)
+
+    it("ignores tile layers the entity does not collide with", function()
+        local odd = { name = "odd", collision_mask = { layers = { ground_tile = true, rail = true } } }
+        assert.is_false(tiles.tile_blocks_entity(odd, pipe))
     end)
 end)
 
