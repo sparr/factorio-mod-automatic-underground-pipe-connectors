@@ -2,6 +2,7 @@ local util = require("util")
 local blueprint = require("lib.blueprint")
 local collision = require("lib.collision")
 local neighbors = require("lib.neighbors")
+local pipes = require("lib.pipes")
 local quality = require("lib.quality")
 local tiles = require("lib.tiles")
 local undo = require("lib.undo")
@@ -434,14 +435,20 @@ local function rebuild_index()
             end
         end
         if underground_entity_name == nil then goto continue_underground_recipe_prototype end
-        -- Find the entity and item for the first recipe ingredient that is a pipe
+        -- Collect every recipe ingredient that places a pipe, in order, and let
+        -- lib.pipes decide between them. A recipe can list more than one, and the
+        -- first is not always the one that can join this underground.
+        local candidates = {}
         for _, ingredient in pairs(underground_recipe_prototype.ingredients) do
             local result = ingredient.type == "item" and prototypes.item[ingredient.name].place_result
             if result and prototypes.entity[result.name].type == "pipe" then
-                pipe_item_name = ingredient.name
-                pipe_entity_name = result.name
-                break
+                candidates[#candidates + 1] = { item = ingredient.name, entity = result.name }
             end
+        end
+        local chosen = pipes.choose(underground_entity_name, candidates)
+        if chosen then
+            pipe_item_name = chosen.item
+            pipe_entity_name = chosen.entity
         end
         if underground_entity_name and pipe_item_name and pipe_entity_name then
             -- Remember that when this underground entity is placed, this pipe item and entity are the ones to use

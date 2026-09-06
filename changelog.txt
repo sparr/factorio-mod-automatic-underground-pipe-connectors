@@ -21,6 +21,9 @@ Date: ????
     - Stamp blueprints as they were drawn. A gap a blueprint leaves between two
       undergrounds is deliberate, and so is one next to a machine the same blueprint
       places, so neither gets filled in any more
+    - Pair an underground with a pipe that can actually join it. A recipe listing more
+      than one pipe used to get whichever came first, which under Pyanodons is a plain
+      pipe that cannot connect to a niobium-tier Advanced Fluid Handling underground
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05
