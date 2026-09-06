@@ -417,6 +417,28 @@ local function fixture_ghost_placement_beside_real()
     end)
 end
 
+--- A real placement wants a real pipe, but an empty pocket cannot pay for one
+local function fixture_no_pipe_in_inventory()
+    begin("real pair with no pipe in inventory falls back to a ghost, free")
+    step("paint refined concrete and stock undergrounds but no pipes", function()
+        paint("refined-concrete")
+        stock{ [UNDERGROUND] = 10 }
+        check(count(PIPE) == 0, "setup: the player should hold no pipes")
+    end)
+    step("build underground A, facing south",
+        function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
+    step("build underground B, facing north",
+        function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
+    step("check the connector fell back to a ghost and cost nothing", function()
+        check(pipe_at_gap() == nil, "a real pipe was placed without one to pay with")
+        check(ghost_at_gap() == PIPE, "expected a pipe ghost, found " .. tostring(ghost_at_gap()))
+        check(count(PIPE) == 0, "pipes appeared from nowhere, inventory holds " .. count(PIPE))
+        check(count(UNDERGROUND) == 8,
+            "both undergrounds should still have been paid for, inventory holds " ..
+            count(UNDERGROUND))
+    end)
+end
+
 --- One underground on its own should do nothing at all
 local function fixture_no_neighbour()
     begin("a lone underground places nothing")
@@ -923,6 +945,7 @@ fixture_ice_gap_with_cover()
 fixture_ice_gap_without_cover()
 fixture_ghost_neighbour()
 fixture_ghost_placement_beside_real()
+fixture_no_pipe_in_inventory()
 fixture_no_neighbour()
 fixture_fluid_neighbour("pump")
 fixture_fluid_neighbour("storage-tank")
