@@ -1,6 +1,6 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.2
-Date: ????
+Date: 2026-09-06
   Features:
     - Connect a junction underground on every side it opens onto, not just straight
       ahead. A T, X or elbow underground now joins along its sideways arms too, and a
