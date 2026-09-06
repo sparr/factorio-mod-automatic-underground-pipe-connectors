@@ -251,18 +251,19 @@ local function build_real(name, position, direction, stand_at, quality)
     world.player.cursor_stack.clear()
 end
 
---- The API has no shift-click equivalent, so a one-entity blueprint stands in.
---- It still reaches the mod as a real on_built_entity with a player index.
+--- Shift-placing is what a player does when they have no item to spend, and that is
+--- exactly the state cursor_ghost describes: an item ghost in the cursor rather than
+--- a stack. A one-entity blueprint used to stand in here, but the mod now tells a
+--- blueprint stamp apart from a hand placement, so a blueprint no longer stands in
+--- for one.
 local function build_ghost(name, position, direction, stand_at)
     -- remote view builds where it is looking, so that one has to move; everything
     -- else keeps the camera parked on the patch
     if stand_at then world.player.teleport(stand_at, world.surface) end
-    world.player.cursor_stack.set_stack{ name = "blueprint" }
-    world.player.cursor_stack.set_blueprint_entities{
-        { entity_number = 1, name = name, position = { 0, 0 }, direction = direction },
-    }
-    world.player.build_from_cursor{ position = position }
     world.player.cursor_stack.clear()
+    world.player.cursor_ghost = name
+    world.player.build_from_cursor{ position = position, direction = direction }
+    world.player.cursor_ghost = nil
 end
 
 --------------------------------------------------------------------------- inspection
@@ -592,7 +593,7 @@ local function fixture_ghost_neighbour()
         paint("refined-concrete")
         stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
     end)
-    step("blueprint a ghost underground at A",
+    step("shift-place a ghost underground at A",
         function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
     step("build a real underground at B, next to the ghost",
         function() build_real(UNDERGROUND, world.b, defines.direction.north) end)
@@ -616,7 +617,7 @@ local function fixture_ghost_placement_beside_real()
     end)
     step("build a real underground at A",
         function() build_real(UNDERGROUND, world.a, defines.direction.south) end)
-    step("blueprint a ghost underground at B",
+    step("shift-place a ghost underground at B",
         function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
     step("check the connector is a ghost and nothing was spent", function()
         check(pipe_at_gap() == nil, "a real pipe was placed for a ghost placement")
@@ -668,29 +669,21 @@ end
 local function fixture_ocean_ghosts()
     begin("ocean gap between ice platforms gets stacked cover ghosts")
     step("paint ice platform, leaving one tile of ammoniacal ocean in the gap", function()
-        -- ice platform everywhere the undergrounds stand, ocean only in the gap.
-        -- A blueprint will not put entity ghosts on open water, so the pair needs
-        -- ground of its own; the gap is what drives the tile logic either way.
+        -- Ocean only in the gap: that one tile is what drives the whole tile logic.
+        -- The two undergrounds get real concrete to stand on, because an underground
+        -- collides with the meltable layer and cannot be shift-placed onto bare ice
+        -- any more than it can be built there. What they stand on is incidental here.
         paint("ice-platform")
         paint("ammoniacal-ocean", { left = world.left + 6, top = 5, width = 1, height = 1 })
+        paint("concrete", { left = world.left + 6, top = 4, width = 1, height = 1 })
+        paint("concrete", { left = world.left + 6, top = 6, width = 1, height = 1 })
         stock{}
         check(tile_at_gap() == "ammoniacal-ocean",
             "setup: the gap is " .. tile_at_gap() .. ", not ocean")
     end)
-    step("add the cover ghosts the game adds when shift-placing onto ice", function()
-        -- An underground collides with the meltable layer, so it cannot be
-        -- blueprinted onto bare ice any more than it can be built there. The game
-        -- adds a cover ghost itself when a player shift-places; do the same here.
-        for _, position in ipairs({ world.a, world.b }) do
-            world.surface.create_entity{
-                name = "tile-ghost", inner_name = "concrete", position = position,
-                force = world.player.force, player = world.player,
-            }
-        end
-    end)
-    step("blueprint a ghost underground at A",
+    step("shift-place a ghost underground at A",
         function() build_ghost(UNDERGROUND, world.a, defines.direction.south) end)
-    step("blueprint a ghost underground at B",
+    step("shift-place a ghost underground at B",
         function() build_ghost(UNDERGROUND, world.b, defines.direction.north) end)
     step("check the gap got a pipe ghost over two stacked cover ghosts", function()
         -- did the two undergrounds we are connecting actually get placed?
@@ -924,10 +917,10 @@ local function fixture_gap_occupant(blocker, label, expect_connector, direction)
     end)
     -- both ghosts, so the placement is a ghost and the occupancy guard is what
     -- decides. A real placement would go through can_place_entity instead.
-    step("blueprint a ghost underground at A", function()
+    step("shift-place a ghost underground at A", function()
         build_ghost(UNDERGROUND, world.a, defines.direction.south)
     end)
-    step("blueprint a ghost underground at B", function()
+    step("shift-place a ghost underground at B", function()
         build_ghost(UNDERGROUND, world.b, defines.direction.north)
     end)
     step("check whether a ghost connector appeared", function()
@@ -943,6 +936,168 @@ local function fixture_gap_occupant(blocker, label, expect_connector, direction)
                 "a ghost was placed on top of a " .. tostring(blocker) .. ", found " .. tostring(ghost))
         end
         if world.blocker and world.blocker.valid then world.blocker.destroy() end
+    end)
+end
+
+--- Snapshot the patch into a blueprint, clear it, then stamp it back. Capturing an
+--- arrangement the other fixtures already prove works is the only way to be sure the
+--- geometry is right, rather than hand-computing relative positions.
+--- The tile an underground points into, which is exactly where a connector would go
+local DIRECTION_VECTORS = {
+    [defines.direction.north] = { 0, -1 },
+    [defines.direction.east]  = { 1, 0 },
+    [defines.direction.south] = { 0, 1 },
+    [defines.direction.west]  = { -1, 0 },
+}
+
+local function in_front_of(entity)
+    local vector = DIRECTION_VECTORS[entity.direction]
+    if not vector then return nil end
+    return { x = entity.position.x + vector[1], y = entity.position.y + vector[2] }
+end
+
+--- What is standing on a spot, named for a failure message
+local function occupants(position)
+    local names = {}
+    for _, entity in pairs(world.surface.find_entities{ position, position }) do
+        names[#names + 1] = entity.name ..
+            (entity.name == "entity-ghost" and ("/" .. entity.ghost_name) or "")
+    end
+    table.sort(names)
+    return names
+end
+
+local function restamp(area)
+    world.player.cursor_stack.set_stack{ name = "blueprint" }
+    world.player.cursor_stack.create_blueprint{
+        surface = world.surface, force = world.player.force, area = area }
+    local entries = world.player.cursor_stack.get_blueprint_entities() or {}
+
+    local placed = {}
+    local sum_x, sum_y = 0, 0
+    for _, entity in pairs(world.surface.find_entities(area)) do
+        if entity.valid and entity.type ~= "character" then
+            placed[#placed + 1] = entity
+            sum_x, sum_y = sum_x + entity.position.x, sum_y + entity.position.y
+        end
+    end
+    -- Roughly where it came from is enough. Exactly where a stamp lands depends on
+    -- the blueprint's own bounding box and grid snapping, so the checks below find
+    -- the stamped entities and work from those rather than trusting this.
+    local centre = #placed > 0 and { x = sum_x / #placed, y = sum_y / #placed }
+
+    for _, entity in ipairs(placed) do if entity.valid then entity.destroy() end end
+    if centre then world.player.build_from_cursor{ position = centre } end
+    world.player.cursor_stack.clear()
+    return #entries
+end
+
+--- A blueprint drawn with a deliberate gap between two facing undergrounds. Whatever
+--- the blueprint says is what the player asked for, so the mod has no business
+--- filling that gap in.
+local function fixture_blueprint_gap()
+    begin("a blueprint with a gap between undergrounds is stamped as drawn")
+    step("paint, then lay two facing undergrounds without waking the mod", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        for _, spot in ipairs({ { world.a, defines.direction.south },
+                                { world.b, defines.direction.north } }) do
+            world.surface.create_entity{ name = UNDERGROUND, position = spot[1],
+                direction = spot[2], force = world.player.force, raise_built = true }
+        end
+        check(pipe_at_gap() == nil and ghost_at_gap() == nil,
+            "setup: something already filled the gap before the blueprint existed")
+    end)
+    step("capture them into a blueprint, clear the ground and stamp it back", function()
+        local area = { { world.a.x - 0.5, world.a.y - 0.5 }, { world.b.x + 0.5, world.b.y + 0.5 } }
+        local captured = restamp(area)
+        note("blueprint captured " .. captured .. " entities")
+        check(captured == 2, "the blueprint should hold exactly the two undergrounds")
+    end)
+    step("check the stamp put down the blueprint and nothing else", function()
+        local patch = { { world.left, 0 }, { world.left + PATCH, PATCH } }
+        local undergrounds = world.surface.find_entities_filtered{
+            ghost_name = UNDERGROUND, area = patch }
+        check(#undergrounds == 2,
+            "expected the blueprint's two underground ghosts, found " .. #undergrounds)
+        if #undergrounds ~= 2 then return end
+        -- derived from where the stamp actually landed rather than where we asked
+        local gap = in_front_of(undergrounds[1])
+        local names = occupants(gap)
+        note("undergrounds at " .. undergrounds[1].position.y .. " and " ..
+             undergrounds[2].position.y .. ", between them: " ..
+             (#names > 0 and table.concat(names, "+") or "nothing"))
+        check(#names == 0,
+            "the mod filled a gap the blueprint drew deliberately: " .. table.concat(names, "+"))
+    end)
+end
+
+--- The other half of the same question: a blueprint that aims an underground at a
+--- machine it also contains. The connector is just as unwanted there.
+local function fixture_blueprint_fluid_neighbour()
+    begin("a blueprint aiming an underground at its own tank is stamped as drawn")
+    step("paint, then place a tank and an underground aimed at it", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [UNDERGROUND] = 10 }
+        world.facing = nil
+        world.neighbour = world.surface.create_entity{
+            name = "storage-tank", position = { x = world.left + 6.5, y = 2.5 },
+            direction = defines.direction.south, force = world.player.force,
+            raise_built = true }
+        check(world.neighbour ~= nil, "could not place the tank")
+        if not world.neighbour then return end
+        for index = 1, world.neighbour.fluids_count do
+            for _, connection in pairs(world.neighbour.get_fluid_box_pipe_connections(index)) do
+                local target = connection.target_position
+                local dx = target.x - connection.position.x
+                local dy = target.y - connection.position.y
+                dx = dx > 0.25 and 1 or (dx < -0.25 and -1 or 0)
+                dy = dy > 0.25 and 1 or (dy < -0.25 and -1 or 0)
+                local facing = direction_of(-dx, -dy)
+                local spot = { x = target.x + dx, y = target.y + dy }
+                local clear = #world.surface.find_entities{
+                    { spot.x - 0.4, spot.y - 0.4 }, { spot.x + 0.4, spot.y + 0.4 } } == 0
+                -- downward only: the engine lays a stamp out in its own order, and
+                -- putting the tank above the underground is what makes the tank the
+                -- one already standing there when the mod wakes up
+                if facing and clear and dy > 0 then
+                    world.gap = target
+                    world.b = spot
+                    world.facing = facing
+                    world.surface.create_entity{ name = UNDERGROUND, position = spot,
+                        direction = facing, force = world.player.force, raise_built = true }
+                    note("gap at " .. target.x .. "," .. target.y ..
+                         ", underground at " .. spot.x .. "," .. spot.y)
+                    return
+                end
+            end
+        end
+    end)
+    step("capture the pair into a blueprint, clear the ground and stamp it back", function()
+        check(world.facing ~= nil, "setup: found nowhere to aim an underground at the tank")
+        if not world.facing then return end
+        local area = { { world.left, 0 }, { world.left + PATCH, PATCH } }
+        local captured = restamp(area)
+        note("blueprint captured " .. captured .. " entities")
+    end)
+    step("check the stamp put down the blueprint and nothing else", function()
+        if not world.facing then return end
+        local patch = { { world.left, 0 }, { world.left + PATCH, PATCH } }
+        local underground = world.surface.find_entities_filtered{
+            ghost_name = UNDERGROUND, area = patch }[1]
+        check(underground ~= nil, "the blueprint did not put its underground down")
+        if not underground then return end
+        local gap = in_front_of(underground)
+        local names = {}
+        for _, name in ipairs(occupants(gap)) do
+            -- the tank's own ghost is the blueprint's, not something the mod added
+            if name ~= "entity-ghost/storage-tank" then names[#names + 1] = name end
+        end
+        note("underground at " .. underground.position.x .. "," .. underground.position.y ..
+             ", in front of it: " .. (#names > 0 and table.concat(names, "+") or "nothing"))
+        check(#names == 0,
+            "the mod added a connector the blueprint did not ask for: " ..
+            table.concat(names, "+"))
     end)
 end
 
@@ -1203,6 +1358,8 @@ fixture_gap_occupant("elevated-straight-rail",
     "an elevated rail over the gap does not block a ghost connector", true,
     defines.direction.east)
 fixture_elevated_rail_real()
+fixture_blueprint_gap()
+fixture_blueprint_fluid_neighbour()
 fixture_ocean_ghosts()
 fixture_undo()
 fixture_character()

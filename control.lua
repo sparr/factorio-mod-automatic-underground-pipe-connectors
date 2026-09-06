@@ -1,4 +1,5 @@
 local util = require("util")
+local blueprint = require("lib.blueprint")
 local collision = require("lib.collision")
 local neighbors = require("lib.neighbors")
 local quality = require("lib.quality")
@@ -85,6 +86,13 @@ local function on_built_entity(event)
     if not lookup_entry then return end -- we don't know what pipe goes with this underground pipe, bail out
     local pipe_prototype = prototypes.entity[lookup_entry.entity]
 
+    local player = game.players[event.player_index]
+    -- A blueprint is a drawing of exactly what the player wants, so whatever gaps it
+    -- leaves are deliberate and filling them in overrides the drawing. This covers
+    -- the machines a stamp puts down beside an underground as much as the
+    -- undergrounds themselves, since the blueprint stays in the cursor throughout.
+    if blueprint.is_stamping(player) then return end
+
     local underground_surface = entity.surface
     local underground_direction = entity.direction
     local underground_position = entity.position
@@ -107,7 +115,6 @@ local function on_built_entity(event)
     -- player just placed: a ghost underground gets a ghost, a real one gets a real
     -- pipe they pay for, whether the thing it connects to is built yet or not.
 
-    local player = game.players[event.player_index]
     local inventory = player.get_main_inventory()
     -- The map editor does not charge for a build, so a connector placed alongside
     -- one should not be charged for either, and there is nothing to run out of

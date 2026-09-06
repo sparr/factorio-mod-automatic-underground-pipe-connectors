@@ -18,6 +18,9 @@ Date: ????
     - Place a ghost connector under things you can build under, elevated rails and
       Nullius wind turbines among them. Only an entity that really collides with the
       pipe turns one away now, rather than any entity the guard did not recognise
+    - Stamp blueprints as they were drawn. A gap a blueprint leaves between two
+      undergrounds is deliberate, and so is one next to a machine the same blueprint
+      places, so neither gets filled in any more
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.0
 Date: 2026-09-05
