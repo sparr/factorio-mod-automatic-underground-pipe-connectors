@@ -1,6 +1,6 @@
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.1
-Date: ????
+Date: 2026-09-06
   Features:
     - New per-player setting for when you have no pipe of the quality you just placed:
       off, the default, leaves a ghost as before; on, the nearest quality you do have
