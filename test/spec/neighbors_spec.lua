@@ -20,14 +20,20 @@ _G.prototypes = {
 local UNDERGROUND_POSITION = { x = 10.5, y = 20.5 }
 local PIPE_POSITION = { 10.5, 19.5 }
 
-local function look(entities)
+--- Stands in for the underground that triggered the search. It opens onto the gap
+--- like any of its neighbours would, so the search has to skip it by identity.
+local PLACED = support.with_fluid_connections(
+    { name = UNDERGROUND, type = UNDERGROUND, direction = defines.direction.north,
+      position = UNDERGROUND_POSITION },
+    { { { connection_type = "normal", target_position = { x = 10.5, y = 19.5 } } } })
+
+local function look(entities, placed)
     return neighbors.find_connection_neighbor(
         support.surface{ entities = entities },
-        UNDERGROUND_POSITION,
-        neighbors.directions_to_neighbors[defines.direction.north],
-        UNDERGROUND,
         PIPE_POSITION,
-        PIPE)
+        UNDERGROUND,
+        PIPE,
+        placed or PLACED)
 end
 
 describe("entity_type_or_ghost_type", function()
@@ -131,6 +137,44 @@ local function underground(fields, opens)
         { x = position.x + back[1] * 2, y = position.y + back[2] * 2 } }
     return support.with_fluid_connections(fields, { connections })
 end
+
+describe("openings", function()
+    local function at(x, y) return { connection_type = "normal", target_position = { x = x, y = y } } end
+
+    it("gives a vanilla underground the one tile it faces", function()
+        local entity = support.fluid_entity{ { at(10.5, 19.5),
+            { connection_type = "underground", target_position = { x = 10.5, y = 22.5 } } } }
+        assert.same({ { 10.5, 19.5 } }, neighbors.openings(entity, VANILLA))
+    end)
+
+    -- the sideways arms are the point: without them a T or an X can only ever be
+    -- joined straight ahead, which for the T is the one side it cannot use
+    it("gives a junction every arm it opens onto", function()
+        local entity = support.fluid_entity{ { at(11.5, 20.5), at(9.5, 20.5),
+            { connection_type = "underground", target_position = { x = 10.5, y = 22.5 } } } }
+        assert.same({ { 11.5, 20.5 }, { 9.5, 20.5 } }, neighbors.openings(entity, VANILLA))
+    end)
+
+    it("leaves out the buried run", function()
+        local entity = support.fluid_entity{ {
+            { connection_type = "underground", target_position = { x = 10.5, y = 19.5 } } } }
+        assert.same({}, neighbors.openings(entity, VANILLA))
+    end)
+
+    it("leaves out an arm the pipe could not join", function()
+        local entity = support.fluid_entity{ {
+            { connection_type = "normal", target_position = { x = 11.5, y = 20.5 },
+              connection_category = { "ht-pipes" } },
+            at(9.5, 20.5),
+        } }
+        assert.same({ { 9.5, 20.5 } }, neighbors.openings(entity, VANILLA))
+    end)
+
+    it("reports a tile once even when two connections reach it", function()
+        local entity = support.fluid_entity{ { at(10.5, 19.5) }, { at(10.5, 19.5) } }
+        assert.same({ { 10.5, 19.5 } }, neighbors.openings(entity, VANILLA))
+    end)
+end)
 
 describe("find_connection_neighbor", function()
     it("finds nothing in an empty area", function()
@@ -237,6 +281,20 @@ describe("find_connection_neighbor", function()
                 })
             assert.is_true(look{ entity })
         end)
+    end)
+
+    it("does not mistake the underground that triggered it for a neighbour", function()
+        -- it opens onto the gap as surely as any partner would
+        assert.is_false(look{ PLACED })
+    end)
+
+    it("finds a partner reached sideways, not just straight ahead", function()
+        -- the gap here is beside the junction rather than in front of it; nothing in
+        -- the search knows or cares which way anything faces
+        local partner = support.fluid_entity({ { { connection_type = "normal",
+            target_position = { x = 10.5, y = 19.5 } } } },
+            { name = UNDERGROUND, type = UNDERGROUND, position = { x = 9.5, y = 19.5 } })
+        assert.is_true(look{ partner })
     end)
 
     it("connects to a non-pipe entity whose fluidbox points at the gap", function()

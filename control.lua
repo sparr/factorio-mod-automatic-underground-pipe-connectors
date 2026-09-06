@@ -1,4 +1,3 @@
-local util = require("util")
 local blueprint = require("lib.blueprint")
 local collision = require("lib.collision")
 local neighbors = require("lib.neighbors")
@@ -68,12 +67,12 @@ local function on_built_entity(event)
 
     local underground_entity_name --[[@type string]]
 
-    local placing_ghost --[[@type boolean]]
+    local placed_as_ghost --[[@type boolean]]
     if entity.type == "entity-ghost" then
-        placing_ghost = true
+        placed_as_ghost = true
         underground_entity_name = entity.ghost_name
     else
-        placing_ghost = false
+        placed_as_ghost = false
         underground_entity_name = entity.name
     end
 
@@ -95,37 +94,20 @@ local function on_built_entity(event)
     if blueprint.is_stamping(player) then return end
 
     local underground_surface = entity.surface
-    local underground_direction = entity.direction
     local underground_position = entity.position
-    local neighbors_directions = neighbors.directions_to_neighbors[underground_direction]
-    local pipe_position_delta = util.direction_vectors[underground_direction]
     local pipe_item_name = lookup_entry.item
     local pipe_entity_name = lookup_entry.entity
-    local pipe_position = {
-        underground_position.x + pipe_position_delta[1],
-        underground_position.y + pipe_position_delta[2]
-    }
-    -- The underground just placed has to open onto that tile as well. A vanilla one
-    -- always does, since it opens on the side it faces, which is the assumption the
-    -- tile was derived from. Pipe Plus's T junction faces that way while opening east
-    -- and west only, so without asking, the mod bridges the one side it cannot use.
-    if not neighbors.opens_onto(
-        entity, pipe_position, neighbors.pipe_connection_categories(pipe_entity_name))
-    then
-        -- bail out because what we just placed does not open onto the gap
-        return
-    end
 
-    local found_neighbor = neighbors.find_connection_neighbor(
-        underground_surface, underground_position, neighbors_directions,
-        underground_entity_name, pipe_position, pipe_entity_name )
-    if not found_neighbor then
-        -- bail out because there's nothing here worth connecting to
+    -- Where a connector could go: every tile this underground opens onto above ground.
+    -- A vanilla one offers the single tile it faces, which is what the mod used to
+    -- work out from its direction. A junction offers its sideways arms as well, and
+    -- each of them is a place a pipe could join something.
+    local openings = neighbors.openings(
+        entity, neighbors.pipe_connection_categories(pipe_entity_name))
+    if #openings == 0 then
+        -- bail out because what was just placed opens onto nothing we could use
         return
     end
-    -- What the neighbour is does not decide this. The connector matches what the
-    -- player just placed: a ghost underground gets a ghost, a real one gets a real
-    -- pipe they pay for, whether the thing it connects to is built yet or not.
 
     local inventory = player.get_main_inventory()
     -- The map editor does not charge for a build, so a connector placed alongside
@@ -134,6 +116,16 @@ local function on_built_entity(event)
     local free_build = player.controller_type == defines.controllers.editor
     -- Spending a quality the player did not ask for is their call, not ours
     local substitute_quality = player.mod_settings["aupc-substitute-pipe-quality"].value
+    --- Try to put a connector on one tile this underground opens onto. Returning
+    --- early just abandons this tile; the others are still worth trying, and each
+    --- pays for itself separately, so running out of pipes part way leaves ghosts.
+    ---
+    --- What the neighbour is does not decide the ghostness. The connector matches what
+    --- the player just placed: a ghost underground gets a ghost, a real one gets a real
+    --- pipe they pay for, whether the thing it connects to is built yet or not.
+    ---@param pipe_position MapPosition
+    local function place_connector(pipe_position)
+    local placing_ghost = placed_as_ghost
     -- What we place is whatever we end up spending, which is normally the
     -- underground's own quality and only differs when they let it
     local connector_quality = placed_quality
@@ -407,6 +399,16 @@ local function on_built_entity(event)
         rollback()
         if not placing_ghost and not free_build and inventory then
             inventory.insert({name=pipe_item_name, count=1, quality=connector_quality})
+        end
+    end
+    end
+
+    for _, pipe_position in ipairs(openings) do
+        if neighbors.find_connection_neighbor(
+            underground_surface, pipe_position, underground_entity_name,
+            pipe_entity_name, entity )
+        then
+            place_connector(pipe_position)
         end
     end
 end

@@ -581,6 +581,76 @@ local function fixture_junction(name, label, expect_connector)
     end)
 end
 
+--- The sideways arms. Two T junctions set side by side, one tile apart on the axis
+--- they actually open along: A opens east and west, B sits two tiles east of it, and
+--- the tile between them is something both open onto. Nothing about this is straight
+--- ahead of either, so it only works once connector tiles come from the openings
+--- themselves rather than from the way the entity faces.
+local function fixture_junction_sideways()
+    begin("a T junction is joined along the arms it does open on")
+    local TILE = "aupc-tests-t-junction"
+    step("paint refined concrete and stock T junctions", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [TILE] = 10 }
+        world.left_j = { x = world.left + 4.5, y = 5.5 }
+        world.right_j = { x = world.left + 6.5, y = 5.5 }
+        world.arm_gap = { x = world.left + 5.5, y = 5.5 }
+    end)
+    step("build the first T junction", function()
+        build_real(TILE, world.left_j, defines.direction.south, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("confirm nothing yet, then build the second two tiles east", function()
+        check(#world.surface.find_entities_filtered{ name = PIPE, position = world.arm_gap } == 0,
+            "a pipe appeared before the second junction existed")
+        build_real(TILE, world.right_j, defines.direction.south, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("check the arms were joined", function()
+        local between = world.surface.find_entities_filtered{ name = PIPE, position = world.arm_gap }[1]
+        note("between the arms: " .. (between and between.name or "nothing") ..
+             ", pipes left: " .. count(PIPE))
+        check(between ~= nil, "the two junctions open onto the same tile but got no connector")
+        check(count(PIPE) == 9, "expected one pipe spent, inventory holds " .. count(PIPE))
+    end)
+end
+
+--- One placement, two connectors. An X junction dropped between two partners opens
+--- onto a gap on either side, and each is somewhere a pipe belongs, so both get one
+--- and both are paid for. Placing a single connector per build was only ever an
+--- assumption of the old straight-ahead geometry.
+local function fixture_junction_both_arms()
+    begin("a junction between two partners is joined on both arms")
+    local TILE = "aupc-tests-x-junction"
+    local NORTH = defines.direction.north
+    step("paint refined concrete and stock X junctions", function()
+        paint("refined-concrete")
+        stock{ [PIPE] = 10, [TILE] = 10 }
+        world.mid = { x = world.left + 4.5, y = 5.5 }
+        world.west_gap = { x = world.left + 3.5, y = 5.5 }
+        world.east_gap = { x = world.left + 5.5, y = 5.5 }
+    end)
+    step("build the two outer junctions, four tiles apart", function()
+        build_real(TILE, { x = world.left + 2.5, y = 5.5 }, NORTH, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("build the second outer junction", function()
+        build_real(TILE, { x = world.left + 6.5, y = 5.5 }, NORTH, { x = world.left + 1.5, y = 1.5 })
+        check(count(PIPE) == 10,
+            "the outer pair reach different tiles and should not have been joined")
+    end)
+    step("drop a junction between them", function()
+        build_real(TILE, world.mid, NORTH, { x = world.left + 1.5, y = 1.5 })
+    end)
+    step("check both arms were joined and both pipes were paid for", function()
+        local west = world.surface.find_entities_filtered{ name = PIPE, position = world.west_gap }[1]
+        local east = world.surface.find_entities_filtered{ name = PIPE, position = world.east_gap }[1]
+        note("west arm: " .. (west and "pipe" or "nothing") ..
+             ", east arm: " .. (east and "pipe" or "nothing") ..
+             ", pipes left: " .. count(PIPE))
+        check(west ~= nil, "the west arm was left unjoined")
+        check(east ~= nil, "the east arm was left unjoined")
+        check(count(PIPE) == 8, "expected two pipes spent, inventory holds " .. count(PIPE))
+    end)
+end
+
 --- Warptorio's warp foundation: buildable ground naming empty-space as its cover.
 --- The mod used to hand that straight to can_place_entity as a tile ghost and die on
 --- "empty-space can not be part a tile ghost".
@@ -1579,6 +1649,8 @@ fixture_junction("aupc-tests-t-junction",
     "a T junction is not bridged on the side it has no connection on", false)
 fixture_junction("aupc-tests-x-junction",
     "an X junction is still bridged, because it opens that way", true)
+fixture_junction_sideways()
+fixture_junction_both_arms()
 fixture_issue_19_blueprint()
 fixture_unghostable_cover()
 fixture_ice_gap_with_cover()

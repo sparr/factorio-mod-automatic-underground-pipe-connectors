@@ -6,6 +6,10 @@ Date: ????
       way it faces, so a junction underground is no longer bridged on a side it has no
       connection on. Pipe Plus's T junction was getting a pipe it cannot join, and
       paying for it; its X junction opens that way and still connects
+  Features:
+    - Connect a junction underground on every side it opens onto, not just straight
+      ahead. A T, X or elbow underground now joins along its sideways arms too, and a
+      junction dropped between two partners is joined on both of them
 ---------------------------------------------------------------------------------------------------
 Version: 2.1.1
 Date: 2026-09-06
